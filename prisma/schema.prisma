@@ -1,0 +1,123 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String             @id @default(uuid())
+  name         String
+  email        String             @unique
+  passwordHash String
+  role         String             @default("admin") // "admin" | "member"
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  githubConns  GitHubConnection[]
+}
+
+model GitHubConnection {
+  id                   String    @id @default(uuid())
+  userId               String
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  githubUserId         String
+  githubUsername       String
+  avatarUrl            String?
+  encryptedAccessToken String
+  lastValidatedAt      DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
+
+model Repository {
+  id            String                @id @default(uuid())
+  githubRepoId  String                @unique
+  owner         String
+  name          String
+  fullName      String                @unique
+  cloneUrl      String
+  htmlUrl       String?
+  defaultBranch String                @default("main")
+  isPrivate     Boolean               @default(false)
+  description   String?
+  language      String?
+  status        String                @default("NOT_CONFIGURED") // "NOT_CONFIGURED" | "CONFIGURED" | "DEPLOYING" | "RUNNING" | "STOPPED" | "FAILED"
+  syncedAt      DateTime              @default(now())
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  config        DeploymentConfig?
+  deployments   Deployment[]
+  envVars       EnvironmentVariable[]
+}
+
+model DeploymentConfig {
+  id              String     @id @default(uuid())
+  repositoryId    String     @unique
+  repository      Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  branch          String     @default("main")
+  basePath        String     @default("")
+  installCommand  String     @default("npm install")
+  buildCommand    String     @default("npm run build")
+  startCommand    String     @default("npm start")
+  processManager  String     @default("node") // "node" | "pm2" | "custom"
+  port            Int?       @default(3000)
+  healthCheckUrl  String?    @default("/health")
+  autoDeploy      Boolean    @default(true)
+  webhookId       String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+}
+
+model Deployment {
+  id             String          @id @default(uuid())
+  repositoryId   String
+  repository     Repository      @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  commitSha      String?
+  commitMessage  String?
+  commitAuthor   String?
+  branch         String          @default("main")
+  status         String          @default("QUEUED") // "QUEUED" | "PREPARING" | "CHECKING_OUT" | "INSTALLING" | "BUILDING" | "DEPLOYING" | "HEALTH_CHECK" | "SUCCESS" | "FAILED" | "CANCELLED"
+  triggerType    String          @default("MANUAL") // "MANUAL" | "WEBHOOK" | "ROLLBACK"
+  startedAt      DateTime?
+  completedAt    DateTime?
+  duration       Int?            // seconds
+  errorMessage   String?
+  rollbackFromId String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  logs           DeploymentLog[]
+}
+
+model DeploymentLog {
+  id           String     @id @default(uuid())
+  deploymentId String
+  deployment   Deployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade)
+  timestamp    DateTime   @default(now())
+  level        String     @default("info") // "info" | "warn" | "error" | "debug"
+  stage        String     @default("GENERAL") // "PREPARING" | "CHECKOUT" | "INSTALL" | "BUILD" | "DEPLOY" | "HEALTH_CHECK" | "CLEANUP"
+  message      String
+}
+
+model EnvironmentVariable {
+  id             String     @id @default(uuid())
+  repositoryId   String
+  repository     Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  key            String
+  encryptedValue String
+  isSecret       Boolean    @default(true)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@unique([repositoryId, key])
+}
+
+model SystemSetting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}
