@@ -59,7 +59,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (connection && autoDeploy) {
       try {
         const token = decrypt(connection.encryptedAccessToken);
-        const appUrl = process.env.APP_URL || "http://localhost:8080";
+        const appUrl = process.env.APP_URL || "http://localhost:29870";
         const webhookUrl = `${appUrl}/api/webhooks/github`;
         const webhookSecret = process.env.GITHUB_WEBHOOK_SECRET || "deploynest_default_webhook_secret_key";
 

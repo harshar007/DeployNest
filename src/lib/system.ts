@@ -1,5 +1,5 @@
 import os from "os";
-import si from "systeminformation";
+import fs from "fs";
 
 export interface SystemStats {
   cpu: {
@@ -28,68 +28,100 @@ export interface SystemStats {
   };
 }
 
+let lastCpuSample: { idle: number; total: number } | null = null;
+
+function getCpuSample(): { idle: number; total: number } {
+  const cpus = os.cpus();
+  let idle = 0;
+  let total = 0;
+
+  for (const cpu of cpus) {
+    for (const type in cpu.times) {
+      total += (cpu.times as any)[type];
+    }
+    idle += cpu.times.idle;
+  }
+
+  return { idle, total };
+}
+
+function calculateCpuLoad(): number {
+  const current = getCpuSample();
+  if (!lastCpuSample) {
+    lastCpuSample = current;
+    // Estimate based on loadavg if on Unix, or default reasonable load
+    const loadAvg = os.loadavg()[0];
+    const cores = os.cpus().length || 1;
+    return Math.min(100, Math.max(5, Math.round((loadAvg / cores) * 100)));
+  }
+
+  const idleDelta = current.idle - lastCpuSample.idle;
+  const totalDelta = current.total - lastCpuSample.total;
+  lastCpuSample = current;
+
+  if (totalDelta <= 0) return 10;
+  const percentage = 100 - Math.round((idleDelta / totalDelta) * 100);
+  return Math.min(100, Math.max(0, percentage));
+}
+
 export async function getSystemHealth(): Promise<SystemStats> {
   try {
-    const [currentLoad, mem, fsSize, osInfo] = await Promise.all([
-      si.currentLoad().catch(() => ({ currentLoad: 0 })),
-      si.mem().catch(() => ({
-        total: os.totalmem(),
-        active: os.totalmem() - os.freemem(),
-        free: os.freemem(),
-      })),
-      si.fsSize().catch(() => []),
-      si.osInfo().catch(() => ({ distro: os.type(), release: os.release(), hostname: os.hostname() })),
-    ]);
-
     const cpus = os.cpus();
-    const cpuModel = cpus.length > 0 ? cpus[0].model : "Unknown";
+    const cpuModel = cpus.length > 0 ? cpus[0].model : "Standard CPU";
+    const cpuUsage = calculateCpuLoad();
 
-    const totalMem = mem.total || os.totalmem();
-    const usedMem = (mem.active || (totalMem - os.freemem()));
+    const totalMem = os.totalmem();
+    const freeMem = os.freemem();
+    const usedMem = totalMem - freeMem;
     const memUsagePercent = Math.round((usedMem / totalMem) * 100);
 
-    let totalDisk = 0;
-    let usedDisk = 0;
-    if (fsSize && fsSize.length > 0) {
-      for (const disk of fsSize) {
-        totalDisk += disk.size;
-        usedDisk += disk.used;
+    let totalDisk = 100 * 1024 * 1024 * 1024; // Default 100GB fallback
+    let freeDisk = 65 * 1024 * 1024 * 1024;
+    let usedDisk = 35 * 1024 * 1024 * 1024;
+
+    try {
+      // Node 18.15+ supports fs.statfsSync
+      const rootPath = process.platform === "win32" ? "C:\\" : "/";
+      if (typeof fs.statfsSync === "function") {
+        const stat = fs.statfsSync(rootPath);
+        totalDisk = stat.bsize * stat.blocks;
+        freeDisk = stat.bsize * stat.bfree;
+        usedDisk = totalDisk - freeDisk;
       }
-    } else {
-      totalDisk = 100 * 1024 * 1024 * 1024; // fallback 100GB
-      usedDisk = 30 * 1024 * 1024 * 1024;
+    } catch {
+      // Fallback
     }
-    const diskUsagePercent = totalDisk > 0 ? Math.round((usedDisk / totalDisk) * 100) : 0;
+
+    const diskUsagePercent = totalDisk > 0 ? Math.round((usedDisk / totalDisk) * 100) : 35;
 
     return {
       cpu: {
-        usagePercent: Math.round(currentLoad.currentLoad || 0),
+        usagePercent: cpuUsage,
         cores: cpus.length,
         model: cpuModel,
       },
       memory: {
         totalBytes: totalMem,
         usedBytes: usedMem,
-        freeBytes: totalMem - usedMem,
+        freeBytes: freeMem,
         usagePercent: memUsagePercent,
       },
       disk: {
         totalBytes: totalDisk,
         usedBytes: usedDisk,
-        freeBytes: totalDisk - usedDisk,
+        freeBytes: freeDisk,
         usagePercent: diskUsagePercent,
       },
       os: {
         platform: os.platform(),
-        distro: osInfo.distro || os.type(),
-        release: osInfo.release || os.release(),
+        distro: os.type(),
+        release: os.release(),
         hostname: os.hostname(),
         uptime: os.uptime(),
       },
     };
   } catch (err) {
     console.error("Failed to gather system metrics:", err);
-    // Fallback using node os
     const totalMem = os.totalmem();
     const freeMem = os.freemem();
     const usedMem = totalMem - freeMem;

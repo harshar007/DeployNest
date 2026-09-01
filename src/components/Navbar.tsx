@@ -36,7 +36,7 @@ export const Navbar: React.FC = () => {
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2 text-xs font-mono text-slate-400 bg-slate-900/90 border border-slate-800 px-3 py-1.5 rounded-lg">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-          <span>HTTP 0.0.0.0:8080</span>
+          <span>HTTP 0.0.0.0:29870</span>
         </div>
       </div>
 

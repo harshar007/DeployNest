@@ -4,9 +4,9 @@
   "description": "DeployNest - Centralized Self-Hosted CI/CD Hub",
   "main": "index.js",
   "scripts": {
-    "dev": "next dev -p 8080 -H 0.0.0.0",
+    "dev": "next dev -p 29870 -H 0.0.0.0",
     "build": "prisma generate && next build",
-    "start": "next start -p 8080 -H 0.0.0.0",
+    "start": "next start -p 29870 -H 0.0.0.0",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
     "prisma:studio": "prisma studio",
@@ -34,8 +34,7 @@
     "next": "^14.2.18",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "tailwind-merge": "^2.5.4",
-    "systeminformation": "^5.23.4"
+    "tailwind-merge": "^2.5.4"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

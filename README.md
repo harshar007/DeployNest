@@ -141,13 +141,13 @@ http://<VPS_PUBLIC_IP>:<PORT>/dashboard
 Example:
 
 ```text
-http://103.25.10.50:8080/dashboard
+http://103.25.10.50:29870/dashboard
 ```
 
 The port is configurable.
 
 ```env
-PORT=8080
+PORT=29870
 ```
 
 The application should bind to:
@@ -186,7 +186,7 @@ flowchart TD
 Example setup:
 
 ```text
-http://VPS_IP:8080/dashboard
+http://VPS_IP:29870/dashboard
         ↓
 Create Admin Account
         ↓
@@ -1539,7 +1539,7 @@ npm start
 Then open:
 
 ```text
-http://<VPS_PUBLIC_IP>:8080/dashboard
+http://<VPS_PUBLIC_IP>:29870/dashboard
 ```
 
 ---
@@ -1552,9 +1552,9 @@ Example:
 NODE_ENV=production
 
 HOST=0.0.0.0
-PORT=8080
+PORT=29870
 
-APP_URL=http://<VPS_PUBLIC_IP>:8080
+APP_URL=http://<VPS_PUBLIC_IP>:29870
 
 DATABASE_URL=postgresql://...
 

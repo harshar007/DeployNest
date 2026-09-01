@@ -83,7 +83,7 @@ export const Sidebar: React.FC = () => {
           <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
           <div className="truncate">
             <p className="text-slate-200 font-medium truncate">VPS Instance: Online</p>
-            <p className="text-[11px] text-slate-400 font-mono">Port: 8080</p>
+            <p className="text-[11px] text-slate-400 font-mono">Port: 29870</p>
           </div>
         </div>
       </div>

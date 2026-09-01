@@ -1,0 +1,24 @@
+version: "3.8"
+
+services:
+  deploynest:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: deploynest
+    restart: unless-stopped
+    ports:
+      - "29870:29870"
+    environment:
+      - NODE_ENV=production
+      - HOST=0.0.0.0
+      - PORT=29870
+      - APP_URL=http://localhost:29870
+      - DATABASE_URL=file:./data/deploynest.db
+      - JWT_SECRET=deploynest_production_jwt_secret_change_me_min32chars
+      - ENCRYPTION_KEY=deploynest_32_bytes_super_secure_encryption_key!
+      - GITHUB_WEBHOOK_SECRET=deploynest_default_webhook_secret_key
+      - DEPLOYMENT_ROOT=/app/data/deployments
+    volumes:
+      - ./data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
