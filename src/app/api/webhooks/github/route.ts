@@ -3,6 +3,13 @@ import crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { deploymentQueue } from "@/lib/queue";
 
+export async function GET() {
+  return NextResponse.json({
+    status: "online",
+    message: "DeployNest GitHub Webhook endpoint is active. GitHub delivers POST payloads to this URL.",
+  });
+}
+
 export async function POST(req: Request) {
   try {
     const event = req.headers.get("x-github-event");

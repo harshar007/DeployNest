@@ -60,6 +60,27 @@ Managing application deployments on a self-hosted VPS often means juggling messy
 
 ## 🚀 Quick Start
 
+### 🐧 Option A: Ubuntu Server 1-Command Auto-Installer (Recommended)
+
+Run this single command on your Ubuntu VPS or Linux server:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/harshar007/DeployNest/main/install.sh | bash
+```
+
+Or clone and run locally:
+
+```bash
+git clone https://github.com/harshar007/DeployNest.git
+cd DeployNest
+chmod +x install.sh
+./install.sh
+```
+
+---
+
+### 💻 Option B: Manual Installation
+
 ### 1. Prerequisites
 - **Node.js**: `v18.x` or later
 - **npm** or **yarn**
