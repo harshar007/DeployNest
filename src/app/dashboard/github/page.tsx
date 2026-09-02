@@ -22,7 +22,7 @@ export default function GitHubIntegrationPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
-  const [copiedWebhook, setCopiedWebhook] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   const fetchStatus = async () => {
     try {
@@ -39,6 +39,7 @@ export default function GitHubIntegrationPage() {
   };
 
   useEffect(() => {
+    setMounted(true);
     fetchStatus();
   }, []);
 
@@ -99,7 +100,7 @@ export default function GitHubIntegrationPage() {
     }
   };
 
-  const webhookEndpoint = typeof window !== "undefined"
+  const webhookEndpoint = mounted && typeof window !== "undefined"
     ? `${window.location.origin}/api/webhooks/github`
     : "http://<VPS_PUBLIC_IP>:29870/api/webhooks/github";
 
