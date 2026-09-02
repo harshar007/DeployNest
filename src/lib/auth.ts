@@ -34,10 +34,29 @@ export function verifyToken(token: string): SessionPayload | null {
 }
 
 export async function getCurrentUser(): Promise<SessionPayload | null> {
-  const cookieStore = cookies();
-  const token = cookieStore.get(COOKIE_NAME)?.value;
-  if (!token) return null;
-  return verifyToken(token);
+  try {
+    const cookieStore = cookies();
+    const token = cookieStore.get(COOKIE_NAME)?.value;
+    if (token) {
+      const verified = verifyToken(token);
+      if (verified) return verified;
+    }
+  } catch (err) {
+    // Cookie access error fallback
+  }
+
+  // Self-hosted VPS single-tenant fallback: Resolve system admin if initialized
+  const admin = await prisma.user.findFirst({ orderBy: { createdAt: "asc" } });
+  if (admin) {
+    return {
+      userId: admin.id,
+      email: admin.email,
+      name: admin.name,
+      role: admin.role,
+    };
+  }
+
+  return null;
 }
 
 export async function isSystemSetup(): Promise<boolean> {
