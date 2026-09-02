@@ -3,7 +3,7 @@ FROM node:20-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
-RUN apk add --no-cache libc6-compat git openssh
+RUN apk add --no-cache libc6-compat git openssh openssl
 WORKDIR /app
 
 COPY package*.json ./

@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { decrypt, maskToken } from "@/lib/crypto";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     let user = await getCurrentUser();
