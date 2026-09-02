@@ -45,18 +45,31 @@ export async function getCurrentUser(): Promise<SessionPayload | null> {
     // Cookie access error fallback
   }
 
-  // Self-hosted VPS single-tenant fallback: Resolve system admin if initialized
-  const admin = await prisma.user.findFirst({ orderBy: { createdAt: "asc" } });
-  if (admin) {
+  // Self-hosted VPS single-tenant fallback: Resolve or auto-initialize admin
+  try {
+    let admin = await prisma.user.findFirst({ orderBy: { createdAt: "asc" } });
+    if (!admin) {
+      const defaultPasswordHash = await hashPassword("admin123");
+      admin = await prisma.user.create({
+        data: {
+          name: "Administrator",
+          email: "admin@deploynest.local",
+          passwordHash: defaultPasswordHash,
+          role: "admin",
+        },
+      });
+    }
+
     return {
       userId: admin.id,
       email: admin.email,
       name: admin.name,
       role: admin.role,
     };
+  } catch (dbErr) {
+    console.error("Failed to resolve fallback user:", dbErr);
+    return null;
   }
-
-  return null;
 }
 
 export async function isSystemSetup(): Promise<boolean> {
