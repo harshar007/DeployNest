@@ -3,7 +3,7 @@ FROM node:20-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
-RUN apk add --no-cache libc6-compat git openssh openssl
+RUN apk add --no-cache libc6-compat git openssh openssl openssl1.1-compat
 WORKDIR /app
 
 COPY package*.json ./
@@ -32,7 +32,7 @@ ENV NODE_ENV=production
 ENV PORT=29870
 ENV HOST=0.0.0.0
 
-RUN apk add --no-cache git bash openssh openssl
+RUN apk add --no-cache git bash openssh openssl openssl1.1-compat
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 deploynest

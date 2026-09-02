@@ -23,6 +23,7 @@ export default function GitHubIntegrationPage() {
   const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [copiedWebhook, setCopiedWebhook] = useState(false);
 
   const fetchStatus = async () => {
     try {
