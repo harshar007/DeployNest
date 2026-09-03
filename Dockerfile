@@ -1,9 +1,10 @@
 # syntax=docker/dockerfile:1
 FROM node:20-alpine AS base
+RUN apk add --no-cache libc6-compat openssl
 
 # Install dependencies only when needed
 FROM base AS deps
-RUN apk add --no-cache libc6-compat git openssh openssl
+RUN apk add --no-cache git openssh
 WORKDIR /app
 
 COPY package*.json ./
@@ -20,7 +21,6 @@ RUN mkdir -p public
 
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
-ENV PRISMA_CLI_BINARY_TARGETS=native,linux-musl-openssl-3.0.x
 
 RUN npx prisma generate
 RUN npm run build
@@ -32,9 +32,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=29870
 ENV HOST=0.0.0.0
-ENV PRISMA_CLI_BINARY_TARGETS=native,linux-musl-openssl-3.0.x
 
-RUN apk add --no-cache git bash openssh openssl
+RUN apk add --no-cache git bash openssh
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 deploynest
