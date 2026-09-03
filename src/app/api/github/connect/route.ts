@@ -8,17 +8,17 @@ export async function POST(req: Request) {
   try {
     let user = await getCurrentUser();
     if (!user) {
-      const adminUser = await prisma.user.findFirst({ where: { role: "admin" } });
-      if (adminUser) {
-        user = {
-          userId: adminUser.id,
-          email: adminUser.email,
-          name: adminUser.name,
-          role: adminUser.role,
-        };
-      } else {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized. Please log in or refresh the page." }, { status: 401 });
+    }
+
+    // Ensure valid user record exists in DB to satisfy foreign key constraint
+    let validUser = await prisma.user.findUnique({ where: { id: user.userId } });
+    if (!validUser) {
+      validUser = await prisma.user.findFirst({ orderBy: { createdAt: "asc" } });
+      if (!validUser) {
+        return NextResponse.json({ error: "User account not found. Please log in again." }, { status: 401 });
       }
+      user.userId = validUser.id;
     }
 
     const { token } = await req.json();

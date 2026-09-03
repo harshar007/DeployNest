@@ -39,7 +39,10 @@ export async function getCurrentUser(): Promise<SessionPayload | null> {
     const token = cookieStore.get(COOKIE_NAME)?.value;
     if (token) {
       const verified = verifyToken(token);
-      if (verified) return verified;
+      if (verified) {
+        const existingUser = await prisma.user.findUnique({ where: { id: verified.userId } });
+        if (existingUser) return verified;
+      }
     }
   } catch (err) {
     // Cookie access error fallback
