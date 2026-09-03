@@ -161,6 +161,18 @@ export default function DeploymentDetailPage() {
 
         {/* Header Actions */}
         <div className="flex items-center gap-3">
+          {deployment.repository?.config?.port && (
+            <a
+              href={`http://${typeof window !== "undefined" ? window.location.hostname : "79.143.179.156"}:${deployment.repository.config.port}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg flex items-center gap-2 transition shadow-md shadow-emerald-600/20"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>Open Live App (:{deployment.repository.config.port})</span>
+            </a>
+          )}
+
           <button
             onClick={fetchDeployment}
             className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white transition"
@@ -181,6 +193,38 @@ export default function DeploymentDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Live Application Endpoint Card */}
+      {deployment.repository?.config?.port && (
+        <div className="p-4 rounded-xl bg-emerald-950/20 border border-emerald-500/30 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+              <Rocket className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2">
+                Application Running Live
+                <span className="px-2 py-0.5 text-[10px] font-mono bg-emerald-500/20 text-emerald-300 rounded border border-emerald-500/30">
+                  PORT :{deployment.repository.config.port}
+                </span>
+              </div>
+              <p className="text-xs font-mono text-slate-300 mt-0.5">
+                http://{typeof window !== "undefined" ? window.location.hostname : "79.143.179.156"}:{deployment.repository.config.port}
+              </p>
+            </div>
+          </div>
+
+          <a
+            href={`http://${typeof window !== "undefined" ? window.location.hostname : "79.143.179.156"}:${deployment.repository.config.port}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            <span>Open Application</span>
+          </a>
+        </div>
+      )}
 
       {message && (
         <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2">

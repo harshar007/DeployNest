@@ -45,11 +45,8 @@ COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/prisma ./prisma
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x ./docker-entrypoint.sh
-RUN mkdir -p /app/data
-
-RUN chown -R deploynest:nodejs /app
-
-USER deploynest
+RUN mkdir -p /app/data/deployments
+RUN chmod -R 777 /app/data
 
 EXPOSE 29870
 

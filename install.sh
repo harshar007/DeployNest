@@ -51,7 +51,8 @@ echo -e "${GREEN}[✓] Docker Compose ready: $(docker compose version)${NC}"
 
 # 4. Prepare Environment & Security Keys
 echo -e "${GREEN}[3/5] Setting up environment configuration...${NC}"
-mkdir -p ./data
+mkdir -p ./data/deployments
+chmod -R 777 ./data 2>/dev/null || true
 
 if [ ! -f .env ]; then
     echo -e "${YELLOW}[->] Generating secure .env configuration with random encryption keys...${NC}"

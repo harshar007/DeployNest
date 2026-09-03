@@ -117,6 +117,10 @@ export default function ApplicationsPage() {
           {apps.map((app) => {
             const isRunning = app.status === "RUNNING";
             const runtime = app.runtime || {};
+            const appPort = app.config?.port || 3000;
+            const liveUrl = typeof window !== "undefined"
+              ? `http://${window.location.hostname}:${appPort}`
+              : `http://79.143.179.156:${appPort}`;
 
             return (
               <div
@@ -125,7 +129,7 @@ export default function ApplicationsPage() {
               >
                 {/* Left details */}
                 <div className="space-y-2.5 min-w-0 flex-1">
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-3">
                     <Link
                       href={`/dashboard/repositories/${app.id}`}
                       className="text-lg font-bold text-slate-100 hover:text-blue-400 transition truncate"
@@ -133,6 +137,10 @@ export default function ApplicationsPage() {
                       {app.name}
                     </Link>
                     <StatusBadge status={app.status} size="sm" />
+                    <span className="px-2.5 py-0.5 text-xs font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 rounded-md flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                      Port :{appPort}
+                    </span>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-4 text-xs font-mono text-slate-400">
@@ -140,12 +148,12 @@ export default function ApplicationsPage() {
                       <span className="text-slate-500">Path: </span>
                       <span className="text-slate-300">{app.config?.basePath || `./data/deployments/${app.owner}/${app.name}`}</span>
                     </div>
-                    {app.config?.port && (
-                      <div>
-                        <span className="text-slate-500">Port: </span>
-                        <span className="text-emerald-400 font-semibold">{app.config.port}</span>
-                      </div>
-                    )}
+                    <div>
+                      <span className="text-slate-500">Running Port: </span>
+                      <span className="text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                        :{appPort}
+                      </span>
+                    </div>
                     {runtime.pid && (
                       <div>
                         <span className="text-slate-500">PID: </span>
@@ -169,6 +177,18 @@ export default function ApplicationsPage() {
 
                 {/* Right controls */}
                 <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  {isRunning && (
+                    <a
+                      href={liveUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center gap-1.5 shadow-md shadow-emerald-600/20"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>Open App (:{appPort})</span>
+                    </a>
+                  )}
+
                   <button
                     onClick={() => handleAction(app.id, isRunning ? "stop" : "start")}
                     disabled={actionLoading === app.id}

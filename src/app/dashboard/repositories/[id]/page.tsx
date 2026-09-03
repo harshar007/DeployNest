@@ -258,9 +258,13 @@ export default function RepositoryDetailPage() {
       {/* Main Header Card */}
       <div className="p-6 rounded-2xl bg-[#0d1322] border border-slate-800/90 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-1.5">
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="text-2xl font-bold text-white tracking-tight">{repo.name}</h1>
             <StatusBadge status={repo.status} size="md" />
+            <span className="px-2.5 py-0.5 text-xs font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 rounded-md flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              Port :{port || 3000}
+            </span>
             {repo.htmlUrl && (
               <a
                 href={repo.htmlUrl}
@@ -273,11 +277,24 @@ export default function RepositoryDetailPage() {
               </a>
             )}
           </div>
-          <p className="text-xs text-slate-400 font-mono">{repo.fullName}</p>
+          <p className="text-xs text-slate-400 font-mono">
+            {repo.fullName} • Serving on Port <span className="text-emerald-400 font-bold">:{port || 3000}</span>
+          </p>
         </div>
 
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-2.5">
+          {isRunning && (
+            <a
+              href={`http://${typeof window !== "undefined" ? window.location.hostname : "79.143.179.156"}:${port || 3000}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg shadow-lg shadow-emerald-600/20 flex items-center gap-1.5 transition"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>Open Live App (:{port || 3000})</span>
+            </a>
+          )}
           <button
             onClick={handleDeploy}
             disabled={actionLoading}

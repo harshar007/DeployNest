@@ -68,8 +68,15 @@ export class DeploymentRunner {
         ? path.resolve(config.basePath)
         : path.resolve(path.join(baseRoot, repository.owner, repository.name));
 
-      if (!fs.existsSync(targetDir)) {
-        fs.mkdirSync(targetDir, { recursive: true });
+      try {
+        if (!fs.existsSync(targetDir)) {
+          fs.mkdirSync(targetDir, { recursive: true, mode: 0o777 });
+        }
+      } catch (mkdirErr: any) {
+        if (mkdirErr.code === "EACCES") {
+          throw new Error(`Permission denied creating directory '${targetDir}'. Please run 'sudo chmod -R 777 ./data' on your VPS server.`);
+        }
+        throw mkdirErr;
       }
 
       await addLog("PREPARING", `Target directory ready: ${targetDir}`);
