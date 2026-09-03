@@ -107,6 +107,14 @@ export class DeploymentRunner {
       });
       await addLog("CHECKOUT", `Checking out branch '${branch}'...`);
 
+      // Ensure Git safe directory configuration to prevent dubious ownership errors
+      try {
+        await execAsync(`git config --global --add safe.directory "${targetDir}"`);
+        await execAsync(`git config --global --add safe.directory "*"`);
+      } catch (gitErr) {
+        // Non-fatal
+      }
+
       const isGitRepo = fs.existsSync(path.join(targetDir, ".git"));
       if (!isGitRepo) {
         await addLog("CHECKOUT", `Cloning repository from GitHub into ${targetDir}...`);
