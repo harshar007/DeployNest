@@ -194,7 +194,7 @@ export class DeploymentRunner {
           data: { status: "INSTALLING" },
         });
         await addLog("INSTALL", `Running install command in [${path.relative(targetDir, workingDir) || "."}]: ${config.installCommand}`);
-        await this.runShellCommand(config.installCommand, workingDir, addLog, "INSTALL");
+        await this.runShellCommand(config.installCommand, workingDir, addLog, "INSTALL", envMap);
         await addLog("INSTALL", "Dependencies installed successfully.");
       }
 
@@ -205,7 +205,7 @@ export class DeploymentRunner {
           data: { status: "BUILDING" },
         });
         await addLog("BUILD", `Running build command in [${path.relative(targetDir, workingDir) || "."}]: ${config.buildCommand}`);
-        await this.runShellCommand(config.buildCommand, workingDir, addLog, "BUILD");
+        await this.runShellCommand(config.buildCommand, workingDir, addLog, "BUILD", envMap);
         await addLog("BUILD", "Build completed successfully.");
       }
 
@@ -295,10 +295,18 @@ export class DeploymentRunner {
     command: string,
     cwd: string,
     addLog: (stage: string, message: string, level?: "info" | "warn" | "error") => Promise<void>,
-    stage: string
+    stage: string,
+    customEnv: Record<string, string> = {}
   ): Promise<void> {
     return new Promise((resolve, reject) => {
-      const child = exec(command, { cwd, maxBuffer: 10 * 1024 * 1024 });
+      // During INSTALL and BUILD stages, ensure NODE_ENV does not cause npm to omit devDependencies
+      const mergedEnv = {
+        ...process.env,
+        ...(stage === "INSTALL" || stage === "BUILD" ? { NODE_ENV: "development" } : {}),
+        ...customEnv,
+      };
+
+      const child = exec(command, { cwd, maxBuffer: 10 * 1024 * 1024, env: mergedEnv });
 
       child.stdout?.on("data", async (data) => {
         const text = data.toString();
