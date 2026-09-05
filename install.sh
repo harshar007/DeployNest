@@ -53,6 +53,8 @@ echo -e "${GREEN}[✓] Docker Compose ready: $(docker compose version)${NC}"
 echo -e "${GREEN}[3/5] Setting up environment configuration...${NC}"
 mkdir -p ./data/deployments
 chmod -R 777 ./data 2>/dev/null || true
+$SUDO mkdir -p /var/www 2>/dev/null || true
+$SUDO chmod -R 777 /var/www 2>/dev/null || true
 
 if [ ! -f .env ]; then
     echo -e "${YELLOW}[->] Generating secure .env configuration with random encryption keys...${NC}"

@@ -5,8 +5,7 @@ services:
       dockerfile: Dockerfile
     container_name: deploynest
     restart: unless-stopped
-    ports:
-      - "${PORT:-29870}:29870"
+    network_mode: "host"
     environment:
       - NODE_ENV=${NODE_ENV:-production}
       - HOST=${HOST:-0.0.0.0}
@@ -20,3 +19,5 @@ services:
     volumes:
       - ./data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
+      - /var/www:/var/www
+

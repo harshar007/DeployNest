@@ -27,7 +27,7 @@ export class DeploymentRunner {
     });
 
     if (!deployment) {
-      console.error(`Deployment ${deploymentId} not found`);
+      console.error(`[DEPLOY] Deployment ${deploymentId} not found`);
       return;
     }
 
@@ -74,7 +74,7 @@ export class DeploymentRunner {
         }
       } catch (mkdirErr: any) {
         if (mkdirErr.code === "EACCES") {
-          throw new Error(`Permission denied creating directory '${targetDir}'. Please run 'sudo chmod -R 777 ./data' on your VPS server.`);
+          throw new Error(`Permission denied creating directory '${targetDir}'. Please run 'sudo chmod -R 777 ./data' or 'sudo chmod -R 777 /var/www' on your VPS server.`);
         }
         throw mkdirErr;
       }
@@ -90,7 +90,6 @@ export class DeploymentRunner {
       if (ghConn?.encryptedAccessToken) {
         const token = decrypt(ghConn.encryptedAccessToken);
         if (token) {
-          // Format authenticated clone url: https://oauth2:token@github.com/owner/repo.git
           cloneUrl = repository.cloneUrl.replace(
             "https://github.com",
             `https://oauth2:${token}@github.com`
@@ -107,11 +106,11 @@ export class DeploymentRunner {
       });
       await addLog("CHECKOUT", `Checking out branch '${branch}'...`);
 
-      // Ensure Git safe directory configuration to prevent dubious ownership errors
+      // Configure Git safe directory to prevent ownership warnings
       try {
         await execAsync(`git config --global --add safe.directory "${targetDir}"`);
         await execAsync(`git config --global --add safe.directory "*"`);
-      } catch (gitErr) {
+      } catch {
         // Non-fatal
       }
 
@@ -126,7 +125,7 @@ export class DeploymentRunner {
           await this.runShellCommand(`git checkout ${branch}`, targetDir, addLog, "CHECKOUT");
           await this.runShellCommand(`git pull origin ${branch}`, targetDir, addLog, "CHECKOUT");
         } catch (err: any) {
-          await addLog("CHECKOUT", `Pull warning: ${err.message}. Attempting reset.`, "warn");
+          await addLog("CHECKOUT", `Pull warning: ${err.message}. Attempting hard reset to origin/${branch}.`, "warn");
           await this.runShellCommand(`git reset --hard origin/${branch}`, targetDir, addLog, "CHECKOUT");
         }
       }
@@ -146,11 +145,11 @@ export class DeploymentRunner {
           },
         });
         await addLog("CHECKOUT", `Active commit: [${commitSha.trim()}] ${commitMsg.trim().split("\n")[0]} by ${commitAuthor.trim()}`);
-      } catch (err) {
+      } catch {
         // Non-fatal
       }
 
-      // 4. Determine Working Directory for Monorepos / Subdirectories
+      // 4. Determine Working Directory for Subdirectories / Monorepos
       let workingDir = targetDir;
       if (config?.rootDirectory && config.rootDirectory.trim().length > 0) {
         const candidate = path.resolve(targetDir, config.rootDirectory.trim());
@@ -193,7 +192,7 @@ export class DeploymentRunner {
           where: { id: deploymentId },
           data: { status: "INSTALLING" },
         });
-        await addLog("INSTALL", `Running install command in [${path.relative(targetDir, workingDir) || "."}]: ${config.installCommand}`);
+        await addLog("INSTALL", `Running: ${config.installCommand}`);
         await this.runShellCommand(config.installCommand, workingDir, addLog, "INSTALL", envMap);
         await addLog("INSTALL", "Dependencies installed successfully.");
       }
@@ -204,51 +203,115 @@ export class DeploymentRunner {
           where: { id: deploymentId },
           data: { status: "BUILDING" },
         });
-        await addLog("BUILD", `Running build command in [${path.relative(targetDir, workingDir) || "."}]: ${config.buildCommand}`);
+        await addLog("BUILD", `Running: ${config.buildCommand}`);
         await this.runShellCommand(config.buildCommand, workingDir, addLog, "BUILD", envMap);
         await addLog("BUILD", "Build completed successfully.");
       }
 
-      // 8. Start / Restart Application
+      // 8. Start / Launch Application
       if (config?.startCommand && config.startCommand.trim().length > 0) {
         await prisma.deployment.update({
           where: { id: deploymentId },
           data: { status: "DEPLOYING" },
         });
-        await addLog("DEPLOY", `Executing start command in [${path.relative(targetDir, workingDir) || "."}]: ${config.startCommand}`);
+        await addLog("DEPLOY", `Executing start command: ${config.startCommand}`);
 
-        const result = await ProcessManager.start(
-          repository.id,
-          config.startCommand,
-          workingDir,
-          envMap,
-          config.port || undefined
-        );
+        const isDockerCompose = config.startCommand.includes("docker compose") || config.startCommand.includes("docker-compose");
 
-        if (!result.success) {
-          throw new Error(`Process start failed: ${result.message}`);
+        if (isDockerCompose) {
+          await addLog("CONTAINER", "Launching Docker Compose stack...");
+          await this.runShellCommand(config.startCommand, workingDir, addLog, "CONTAINER", envMap);
+          await addLog("CONTAINER", "Docker Compose stack launched.");
+        } else {
+          const result = await ProcessManager.start(
+            repository.id,
+            config.startCommand,
+            workingDir,
+            envMap,
+            config.port || undefined
+          );
+
+          if (!result.success) {
+            throw new Error(`Process start failed: ${result.message}`);
+          }
+
+          await addLog("PROCESS", `Application process spawned (PID: ${result.pid}).`);
+
+          // Allow 1 second for immediate runtime crash check
+          await new Promise((r) => setTimeout(r, 1000));
+          if (!ProcessManager.isAlive(repository.id)) {
+            const logs = ProcessManager.getLogs(repository.id, 10);
+            const logSnippet = logs.map(l => l.text).join(" | ");
+            throw new Error(`Application process terminated immediately after startup. Details: ${logSnippet || "Process closed prematurely."}`);
+          }
         }
-
-        await addLog("DEPLOY", `Application process started (PID: ${result.pid}).`);
       }
 
-      // 9. Health Check Probe
-      if (config?.port && config.healthCheckUrl) {
+      // 9. Port Availability Check
+      const targetPort = config?.port;
+      if (targetPort && targetPort > 0) {
         await prisma.deployment.update({
           where: { id: deploymentId },
           data: { status: "HEALTH_CHECK" },
         });
-        await addLog("HEALTH_CHECK", `Verifying application health on http://localhost:${config.port}${config.healthCheckUrl}...`);
 
-        const isHealthy = await this.probeHealthCheck(config.port, config.healthCheckUrl, 10, addLog);
-        if (!isHealthy) {
-          await addLog("HEALTH_CHECK", "Health check did not respond with 200 OK within timeout period.", "warn");
-        } else {
-          await addLog("HEALTH_CHECK", "Health check passed successfully! Application is live and serving requests.");
+        await addLog("PORT", `Verifying TCP socket listening on port ${targetPort}...`);
+        let portOpen = false;
+        const maxPortRetries = 15;
+
+        for (let attempt = 1; attempt <= maxPortRetries; attempt++) {
+          portOpen = await ProcessManager.testPortOpen(targetPort, 1200);
+          if (portOpen) {
+            await addLog("PORT", `Port ${targetPort} is actively listening on TCP interface.`);
+            break;
+          }
+
+          // Check if process crashed while waiting for port
+          if (!config?.startCommand?.includes("docker") && !ProcessManager.isAlive(repository.id)) {
+            const logs = ProcessManager.getLogs(repository.id, 10);
+            const logSnippet = logs.map(l => l.text).join(" | ");
+            throw new Error(`Application process died while waiting for port ${targetPort}. Details: ${logSnippet || "Process exited."}`);
+          }
+
+          await addLog("PORT", `Port ${targetPort} probe ${attempt}/${maxPortRetries} - waiting for socket bind...`);
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+
+        if (!portOpen) {
+          throw new Error(`Port ${targetPort} failed to open within ${maxPortRetries}s timeout. Ensure your start command binds to 0.0.0.0:${targetPort}.`);
         }
       }
 
-      // Complete Deployment
+      // 10. HTTP Health Check Probe
+      if (targetPort && config?.healthCheckUrl && config.healthCheckUrl.trim().length > 0) {
+        await addLog("HEALTH", `Verifying HTTP endpoint http://127.0.0.1:${targetPort}${config.healthCheckUrl}...`);
+        const isHealthy = await this.probeHealthCheck(targetPort, config.healthCheckUrl, 10, addLog);
+
+        if (!isHealthy) {
+          throw new Error(`Health check probe failed on http://127.0.0.1:${targetPort}${config.healthCheckUrl}. Application did not return 200-399 status.`);
+        }
+
+        await addLog("HEALTH", "Health check passed! Application is live and serving HTTP requests.");
+      }
+
+      // 11. Post-Health-Check Stabilization Check
+      await addLog("VERIFY", "Performing post-startup stabilization check...");
+      await new Promise((r) => setTimeout(r, 2000));
+
+      if (!config?.startCommand?.includes("docker") && !ProcessManager.isAlive(repository.id)) {
+        throw new Error("Application process died shortly after passing health check. Review application logs for runtime crash details.");
+      }
+
+      if (targetPort && targetPort > 0) {
+        const portStillOpen = await ProcessManager.testPortOpen(targetPort, 1500);
+        if (!portStillOpen) {
+          throw new Error(`Port ${targetPort} closed unexpectedly during stabilization check.`);
+        }
+      }
+
+      await addLog("VERIFY", "Application process and port verified stable.");
+
+      // 12. Complete Deployment as SUCCESS
       const completedAt = new Date();
       const durationSeconds = Math.round((completedAt.getTime() - startTime.getTime()) / 1000);
 
@@ -266,9 +329,9 @@ export class DeploymentRunner {
         data: { status: "RUNNING" },
       });
 
-      await addLog("SUCCESS", `Deployment #${deploymentId.substring(0, 6)} completed successfully in ${durationSeconds}s!`);
+      await addLog("SUCCESS", `Deployment #${deploymentId.substring(0, 6)} completed successfully in ${durationSeconds}s! Public port: ${targetPort || "N/A"}`);
     } catch (err: any) {
-      console.error(`Deployment ${deploymentId} failed:`, err);
+      console.error(`[DEPLOY] Deployment ${deploymentId} failed:`, err);
       const completedAt = new Date();
       const durationSeconds = Math.round((completedAt.getTime() - startTime.getTime()) / 1000);
 
@@ -306,7 +369,7 @@ export class DeploymentRunner {
         ...customEnv,
       };
 
-      const child = exec(command, { cwd, maxBuffer: 10 * 1024 * 1024, env: mergedEnv });
+      const child = exec(command, { cwd, maxBuffer: 10 * 1024 * 1024, env: mergedEnv as NodeJS.ProcessEnv });
 
       child.stdout?.on("data", async (data) => {
         const text = data.toString();
@@ -345,14 +408,14 @@ export class DeploymentRunner {
     const url = `http://127.0.0.1:${port}${healthPath.startsWith("/") ? healthPath : `/${healthPath}`}`;
     for (let i = 1; i <= maxRetries; i++) {
       try {
-        await new Promise((r) => setTimeout(r, 1500));
+        await new Promise((r) => setTimeout(r, 1000));
         const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
         if (res.status >= 200 && res.status < 400) {
           return true;
         }
-        await addLog("HEALTH_CHECK", `Probe attempt ${i}/${maxRetries} status: ${res.status}`);
+        await addLog("HEALTH", `Probe attempt ${i}/${maxRetries} responded with HTTP ${res.status}`);
       } catch (err: any) {
-        await addLog("HEALTH_CHECK", `Probe attempt ${i}/${maxRetries} waiting for port ${port}...`);
+        await addLog("HEALTH", `Probe attempt ${i}/${maxRetries} waiting for HTTP response on port ${port}...`);
       }
     }
     return false;

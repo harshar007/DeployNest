@@ -33,7 +33,8 @@ ENV NODE_ENV=production
 ENV PORT=29870
 ENV HOST=0.0.0.0
 
-RUN apk add --no-cache git bash openssh docker-cli docker-cli-compose
+RUN apk add --no-cache git bash openssh curl procps net-tools docker-cli docker-cli-compose python3 py3-pip && \
+    npm install -g serve pm2
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 deploynest
@@ -45,8 +46,8 @@ COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/prisma ./prisma
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x ./docker-entrypoint.sh
-RUN mkdir -p /app/data/deployments
-RUN chmod -R 777 /app/data
+RUN mkdir -p /app/data/deployments /var/www
+RUN chmod -R 777 /app/data /var/www 2>/dev/null || true
 
 EXPOSE 29870
 

@@ -200,9 +200,9 @@ export default function RepositoriesPage() {
                           {repo.name}
                         </Link>
                         {repo.isPrivate ? (
-                          <Lock className="w-3 h-3 text-amber-400 shrink-0" title="Private" />
+                          <span title="Private"><Lock className="w-3 h-3 text-amber-400 shrink-0" /></span>
                         ) : (
-                          <Globe className="w-3 h-3 text-slate-500 shrink-0" title="Public" />
+                          <span title="Public"><Globe className="w-3 h-3 text-slate-500 shrink-0" /></span>
                         )}
                       </div>
                       <p className="text-[11px] text-slate-400 font-mono truncate">{repo.fullName}</p>
