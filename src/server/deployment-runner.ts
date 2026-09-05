@@ -150,7 +150,19 @@ export class DeploymentRunner {
         // Non-fatal
       }
 
-      // 4. Inject Environment Variables
+      // 4. Determine Working Directory for Monorepos / Subdirectories
+      let workingDir = targetDir;
+      if (config?.rootDirectory && config.rootDirectory.trim().length > 0) {
+        const candidate = path.resolve(targetDir, config.rootDirectory.trim());
+        if (fs.existsSync(candidate)) {
+          workingDir = candidate;
+          await addLog("PREPARING", `📁 Using working subdirectory: '${config.rootDirectory.trim()}' (${workingDir})`);
+        } else {
+          await addLog("PREPARING", `⚠️ Specified root directory '${config.rootDirectory.trim()}' does not exist inside repository. Defaulting to repository root.`, "warn");
+        }
+      }
+
+      // 5. Inject Environment Variables
       await addLog("PREPARING", "Preparing environment variables & writing .env file...");
       const envMap: Record<string, string> = {};
       const envFileLines: string[] = [];
@@ -167,43 +179,48 @@ export class DeploymentRunner {
 
       if (envFileLines.length > 0) {
         fs.writeFileSync(path.join(targetDir, ".env"), envFileLines.join("\n"), "utf8");
+        if (workingDir !== targetDir) {
+          try {
+            fs.writeFileSync(path.join(workingDir, ".env"), envFileLines.join("\n"), "utf8");
+          } catch {}
+        }
         await addLog("PREPARING", `Injected ${envFileLines.length} environment variables into .env`);
       }
 
-      // 5. Install Dependencies
+      // 6. Install Dependencies
       if (config?.installCommand && config.installCommand.trim().length > 0) {
         await prisma.deployment.update({
           where: { id: deploymentId },
           data: { status: "INSTALLING" },
         });
-        await addLog("INSTALL", `Running install command: ${config.installCommand}`);
-        await this.runShellCommand(config.installCommand, targetDir, addLog, "INSTALL");
+        await addLog("INSTALL", `Running install command in [${path.relative(targetDir, workingDir) || "."}]: ${config.installCommand}`);
+        await this.runShellCommand(config.installCommand, workingDir, addLog, "INSTALL");
         await addLog("INSTALL", "Dependencies installed successfully.");
       }
 
-      // 6. Build Project
+      // 7. Build Project
       if (config?.buildCommand && config.buildCommand.trim().length > 0) {
         await prisma.deployment.update({
           where: { id: deploymentId },
           data: { status: "BUILDING" },
         });
-        await addLog("BUILD", `Running build command: ${config.buildCommand}`);
-        await this.runShellCommand(config.buildCommand, targetDir, addLog, "BUILD");
+        await addLog("BUILD", `Running build command in [${path.relative(targetDir, workingDir) || "."}]: ${config.buildCommand}`);
+        await this.runShellCommand(config.buildCommand, workingDir, addLog, "BUILD");
         await addLog("BUILD", "Build completed successfully.");
       }
 
-      // 7. Start / Restart Application
+      // 8. Start / Restart Application
       if (config?.startCommand && config.startCommand.trim().length > 0) {
         await prisma.deployment.update({
           where: { id: deploymentId },
           data: { status: "DEPLOYING" },
         });
-        await addLog("DEPLOY", `Executing start command: ${config.startCommand}`);
+        await addLog("DEPLOY", `Executing start command in [${path.relative(targetDir, workingDir) || "."}]: ${config.startCommand}`);
 
         const result = await ProcessManager.start(
           repository.id,
           config.startCommand,
-          targetDir,
+          workingDir,
           envMap,
           config.port || undefined
         );
@@ -215,7 +232,7 @@ export class DeploymentRunner {
         await addLog("DEPLOY", `Application process started (PID: ${result.pid}).`);
       }
 
-      // 8. Health Check Probe
+      // 9. Health Check Probe
       if (config?.port && config.healthCheckUrl) {
         await prisma.deployment.update({
           where: { id: deploymentId },

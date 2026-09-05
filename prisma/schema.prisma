@@ -60,10 +60,12 @@ model DeploymentConfig {
   repository      Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
   branch          String     @default("main")
   basePath        String     @default("")
+  rootDirectory   String     @default("")
+  frameworkPreset String     @default("custom")
   installCommand  String     @default("npm install")
   buildCommand    String     @default("npm run build")
   startCommand    String     @default("npm start")
-  processManager  String     @default("node") // "node" | "pm2" | "custom"
+  processManager  String     @default("node") // "node" | "pm2" | "docker-compose" | "docker" | "python" | "custom"
   port            Int?       @default(3000)
   healthCheckUrl  String?    @default("/health")
   autoDeploy      Boolean    @default(true)

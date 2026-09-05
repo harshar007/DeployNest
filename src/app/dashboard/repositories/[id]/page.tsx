@@ -22,9 +22,17 @@ import {
   CheckCircle2,
   AlertCircle,
   Key,
+  Sparkles,
+  Activity,
+  Globe,
+  Wrench,
+  Cpu,
+  FolderTree,
+  Check,
 } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
 import { TerminalViewer } from "@/components/TerminalViewer";
+import { FRAMEWORK_PRESETS, FrameworkPreset } from "@/lib/presets";
 
 export default function RepositoryDetailPage() {
   const params = useParams();
@@ -33,15 +41,19 @@ export default function RepositoryDetailPage() {
 
   const [repo, setRepo] = useState<any>(null);
   const [branches, setBranches] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<"config" | "env" | "logs" | "deployments">("config");
+  const [activeTab, setActiveTab] = useState<"config" | "env" | "diagnostics" | "logs" | "deployments">("config");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [detecting, setDetecting] = useState(false);
+  const [detectedData, setDetectedData] = useState<any>(null);
   const [liveLogs, setLiveLogs] = useState<any[]>([]);
 
   // Configuration Form State
   const [branch, setBranch] = useState("main");
   const [basePath, setBasePath] = useState("");
+  const [rootDirectory, setRootDirectory] = useState("");
+  const [frameworkPreset, setFrameworkPreset] = useState("custom");
   const [installCommand, setInstallCommand] = useState("npm install");
   const [buildCommand, setBuildCommand] = useState("npm run build");
   const [startCommand, setStartCommand] = useState("npm start");
@@ -49,6 +61,11 @@ export default function RepositoryDetailPage() {
   const [port, setPort] = useState<number | string>(3000);
   const [healthCheckUrl, setHealthCheckUrl] = useState("/health");
   const [autoDeploy, setAutoDeploy] = useState(true);
+
+  // Diagnostics State
+  const [diagnostics, setDiagnostics] = useState<any>(null);
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [firewallLoading, setFirewallLoading] = useState(false);
 
   // Environment Variables State
   const [envVars, setEnvVars] = useState<any[]>([]);
@@ -75,6 +92,8 @@ export default function RepositoryDetailPage() {
         if (r.config) {
           setBranch(r.config.branch || r.defaultBranch || "main");
           setBasePath(r.config.basePath || "");
+          setRootDirectory(r.config.rootDirectory || "");
+          setFrameworkPreset(r.config.frameworkPreset || "custom");
           setInstallCommand(r.config.installCommand || "npm install");
           setBuildCommand(r.config.buildCommand || "npm run build");
           setStartCommand(r.config.startCommand || "npm start");
@@ -113,6 +132,79 @@ export default function RepositoryDetailPage() {
     } catch {}
   };
 
+  const runDiagnostics = async () => {
+    setDiagnosing(true);
+    try {
+      const res = await fetch(`/api/repositories/${repoId}/diagnose`);
+      if (res.ok) {
+        const data = await res.json();
+        setDiagnostics(data.diagnosis);
+      }
+    } catch (err) {
+      console.error("Diagnostics error:", err);
+    } finally {
+      setDiagnosing(false);
+    }
+  };
+
+  const handleOpenFirewall = async () => {
+    setFirewallLoading(true);
+    try {
+      const res = await fetch(`/api/repositories/${repoId}/firewall`, { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setMessage({ type: "success", text: data.message || "Firewall updated!" });
+        runDiagnostics();
+      } else {
+        setMessage({ type: "error", text: data.error || "Failed to open firewall" });
+      }
+    } catch (err: any) {
+      setMessage({ type: "error", text: err.message });
+    } finally {
+      setFirewallLoading(false);
+    }
+  };
+
+  const handleAutoDetect = async () => {
+    setDetecting(true);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/repositories/${repoId}/detect`);
+      if (!res.ok) throw new Error("Auto-detection failed");
+      const data = await res.json();
+      if (data.success && data.detection) {
+        setDetectedData(data.detection);
+        const p: FrameworkPreset = data.detection.preset;
+        if (p) {
+          applyPreset(p, data.detection.recommendedRootDir);
+          setMessage({
+            type: "success",
+            text: `Detected: ${p.name} (${data.detection.detectionReason}). Settings updated!`,
+          });
+        }
+      }
+    } catch (err: any) {
+      setMessage({ type: "error", text: err.message });
+    } finally {
+      setDetecting(false);
+    }
+  };
+
+  const applyPreset = (p: FrameworkPreset, customRootDir?: string) => {
+    setFrameworkPreset(p.id);
+    if (customRootDir !== undefined) {
+      setRootDirectory(customRootDir);
+    } else {
+      setRootDirectory(p.defaultRootDirectory);
+    }
+    setInstallCommand(p.installCommand);
+    setBuildCommand(p.buildCommand);
+    setStartCommand(p.startCommand);
+    setPort(p.defaultPort);
+    setHealthCheckUrl(p.healthCheckUrl);
+    setProcessManager(p.processManager);
+  };
+
   useEffect(() => {
     fetchRepoData();
   }, [repoId]);
@@ -122,6 +214,9 @@ export default function RepositoryDetailPage() {
     if (activeTab === "logs") {
       fetchLiveLogs();
       interval = setInterval(fetchLiveLogs, 3000);
+    } else if (activeTab === "diagnostics") {
+      runDiagnostics();
+      interval = setInterval(runDiagnostics, 5000);
     }
     return () => clearInterval(interval);
   }, [activeTab, repoId]);
@@ -138,6 +233,8 @@ export default function RepositoryDetailPage() {
         body: JSON.stringify({
           branch,
           basePath,
+          rootDirectory,
+          frameworkPreset,
           installCommand,
           buildCommand,
           startCommand,
@@ -179,15 +276,24 @@ export default function RepositoryDetailPage() {
       router.push(`/dashboard/deployments/${data.deploymentId}`);
     } catch (err: any) {
       setMessage({ type: "error", text: err.message });
+    } finally {
       setActionLoading(false);
     }
   };
 
   const handleProcessAction = async (action: "start" | "stop" | "restart") => {
     setActionLoading(true);
+    setMessage(null);
     try {
-      await fetch(`/api/repositories/${repoId}/${action}`, { method: "POST" });
-      setTimeout(fetchRepoData, 800);
+      const res = await fetch(`/api/repositories/${repoId}/${action}`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Failed to ${action} application`);
+
+      setMessage({ type: "success", text: `Application ${action}ed successfully!` });
+      await fetchRepoData();
+      if (activeTab === "diagnostics") runDiagnostics();
     } catch (err: any) {
       setMessage({ type: "error", text: err.message });
     } finally {
@@ -210,13 +316,15 @@ export default function RepositoryDetailPage() {
         }),
       });
 
-      if (res.ok) {
-        setNewKey("");
-        setNewValue("");
-        const envRes = await fetch(`/api/repositories/${repoId}/env`);
-        const envData = await envRes.json();
-        setEnvVars(envData.envVars || []);
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to add environment variable");
       }
+
+      setNewKey("");
+      setNewValue("");
+      setMessage({ type: "success", text: "Environment variable added successfully!" });
+      fetchRepoData();
     } catch (err: any) {
       setMessage({ type: "error", text: err.message });
     }
@@ -224,9 +332,12 @@ export default function RepositoryDetailPage() {
 
   const handleDeleteEnv = async (envId: string) => {
     try {
-      const res = await fetch(`/api/repositories/${repoId}/env?envId=${envId}`, { method: "DELETE" });
+      const res = await fetch(`/api/repositories/${repoId}/env?envId=${envId}`, {
+        method: "DELETE",
+      });
       if (res.ok) {
-        setEnvVars(envVars.filter((v) => v.id !== envId));
+        setMessage({ type: "success", text: "Environment variable deleted" });
+        fetchRepoData();
       }
     } catch (err: any) {
       setMessage({ type: "error", text: err.message });
@@ -234,18 +345,33 @@ export default function RepositoryDetailPage() {
   };
 
   if (loading) {
-    return <div className="p-8 text-center text-slate-400">Loading repository details...</div>;
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="flex flex-col items-center gap-3 text-slate-400">
+          <RefreshCw className="w-8 h-8 animate-spin text-blue-500" />
+          <p className="text-sm font-mono">Loading repository configuration...</p>
+        </div>
+      </div>
+    );
   }
 
   if (!repo) {
-    return <div className="p-8 text-center text-slate-400">Repository not found.</div>;
+    return (
+      <div className="p-8 text-center space-y-4">
+        <h2 className="text-xl font-bold text-white">Repository Not Found</h2>
+        <Link href="/dashboard/repositories" className="text-sm text-blue-400 hover:underline">
+          Return to Repositories
+        </Link>
+      </div>
+    );
   }
 
   const isRunning = repo.status === "RUNNING";
+  const publicHost = typeof window !== "undefined" ? window.location.hostname : "localhost";
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
-      {/* Top Breadcrumb */}
+    <div className="space-y-6 max-w-6xl mx-auto pb-16">
+      {/* Breadcrumb Header */}
       <div className="flex items-center gap-2 text-xs text-slate-400">
         <Link href="/dashboard/repositories" className="hover:text-slate-200 flex items-center gap-1">
           <ArrowLeft className="w-3.5 h-3.5" />
@@ -265,6 +391,12 @@ export default function RepositoryDetailPage() {
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
               Port :{port || 3000}
             </span>
+            {rootDirectory && (
+              <span className="px-2 py-0.5 text-[11px] font-mono bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded flex items-center gap-1">
+                <FolderTree className="w-3 h-3" />
+                {rootDirectory}/
+              </span>
+            )}
             {repo.htmlUrl && (
               <a
                 href={repo.htmlUrl}
@@ -286,7 +418,7 @@ export default function RepositoryDetailPage() {
         <div className="flex flex-wrap items-center gap-2.5">
           {isRunning && (
             <a
-              href={`http://${typeof window !== "undefined" ? window.location.hostname : "79.143.179.156"}:${port || 3000}`}
+              href={`http://${publicHost}:${port || 3000}`}
               target="_blank"
               rel="noopener noreferrer"
               className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg shadow-lg shadow-emerald-600/20 flex items-center gap-1.5 transition"
@@ -345,9 +477,10 @@ export default function RepositoryDetailPage() {
       )}
 
       {/* Navigation Tabs */}
-      <div className="flex items-center gap-1 border-b border-slate-800/80 pb-px">
+      <div className="flex items-center gap-1 border-b border-slate-800/80 pb-px overflow-x-auto">
         {[
           { id: "config", label: "Deployment Configuration", icon: GitBranch },
+          { id: "diagnostics", label: "Network & Port Diagnostics", icon: Activity },
           { id: "env", label: "Environment & Secrets", icon: Key },
           { id: "logs", label: "Application Logs", icon: TerminalIcon },
           { id: "deployments", label: "Deployment History", icon: Clock },
@@ -358,7 +491,7 @@ export default function RepositoryDetailPage() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-t-lg transition border-b-2 ${
+              className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-t-lg transition whitespace-nowrap border-b-2 ${
                 isActive
                   ? "border-blue-500 text-blue-400 bg-blue-500/5"
                   : "border-transparent text-slate-400 hover:text-slate-200"
@@ -374,6 +507,82 @@ export default function RepositoryDetailPage() {
       {/* Tab 1: Deployment Configuration */}
       {activeTab === "config" && (
         <form onSubmit={(e) => handleSaveConfig(e, false)} className="space-y-6">
+          {/* Framework Presets & Auto-Detect Banner */}
+          <div className="p-5 rounded-2xl bg-[#0d1322] border border-slate-800/90 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wider flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  <span>Framework Presets & Auto-Detection</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Pick a pre-configured template or click Auto-Detect to scan this repository automatically.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleAutoDetect}
+                disabled={detecting}
+                className="px-3.5 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold text-xs rounded-lg shadow-md flex items-center gap-1.5 transition disabled:opacity-50 shrink-0"
+              >
+                {detecting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                <span>{detecting ? "Scanning Project..." : "⚡ Auto-Detect Project"}</span>
+              </button>
+            </div>
+
+            {/* Detected Badges if available */}
+            {detectedData?.subdirectories?.length > 0 && (
+              <div className="p-3 bg-slate-900/80 rounded-xl border border-slate-800 flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-slate-400 font-medium">Detected subfolders:</span>
+                {detectedData.subdirectories.map((sub: string) => (
+                  <button
+                    key={sub}
+                    type="button"
+                    onClick={() => setRootDirectory(sub)}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-mono transition flex items-center gap-1 border ${
+                      rootDirectory === sub
+                        ? "bg-blue-600 text-white border-blue-500 font-bold"
+                        : "bg-slate-800 text-slate-300 border-slate-700 hover:border-slate-600"
+                    }`}
+                  >
+                    <FolderTree className="w-3 h-3" />
+                    <span>{sub}/</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Preset Selector Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 pt-1">
+              {FRAMEWORK_PRESETS.map((p) => {
+                const isSelected = frameworkPreset === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => applyPreset(p)}
+                    className={`p-3 rounded-xl border text-left transition flex flex-col justify-between gap-1.5 ${
+                      isSelected
+                        ? "bg-blue-600/15 border-blue-500 text-blue-400 ring-1 ring-blue-500/40"
+                        : "bg-slate-900/60 border-slate-800/80 hover:bg-slate-900 hover:border-slate-700 text-slate-300"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-lg">{p.icon}</span>
+                      {isSelected && <Check className="w-3.5 h-3.5 text-blue-400" />}
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-100">{p.name}</p>
+                      <p className="text-[10px] text-slate-400 line-clamp-1">{p.description}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Main Pipeline Settings */}
           <div className="p-6 rounded-2xl bg-[#0d1322] border border-slate-800/90 space-y-5">
             <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wider">
               VPS Runnable Path & Build Settings
@@ -402,10 +611,25 @@ export default function RepositoryDetailPage() {
                 </select>
               </div>
 
+              {/* Root Directory / Monorepo Subfolder */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider flex items-center justify-between">
+                  <span>Root Directory (Subfolder)</span>
+                  <span className="text-[10px] text-slate-500 lowercase">e.g. frontend or backend</span>
+                </label>
+                <input
+                  type="text"
+                  value={rootDirectory}
+                  onChange={(e) => setRootDirectory(e.target.value)}
+                  placeholder="Leave empty for root, or enter 'frontend' / 'backend'"
+                  className="w-full bg-slate-900/90 border border-slate-800 rounded-lg px-3.5 py-2.5 text-xs font-mono text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 transition"
+                />
+              </div>
+
               {/* Base Runnable Path */}
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
-                  Base Runnable Path (VPS Directory)
+                  Base VPS Clone Directory
                 </label>
                 <input
                   type="text"
@@ -425,7 +649,7 @@ export default function RepositoryDetailPage() {
                   type="text"
                   value={installCommand}
                   onChange={(e) => setInstallCommand(e.target.value)}
-                  placeholder="npm install"
+                  placeholder="npm install (or pip install -r requirements.txt)"
                   className="w-full bg-slate-900/90 border border-slate-800 rounded-lg px-3.5 py-2.5 text-xs font-mono text-slate-100 focus:outline-none focus:border-blue-500 transition"
                 />
               </div>
@@ -439,7 +663,7 @@ export default function RepositoryDetailPage() {
                   type="text"
                   value={buildCommand}
                   onChange={(e) => setBuildCommand(e.target.value)}
-                  placeholder="npm run build"
+                  placeholder="npm run build (leave empty if not needed)"
                   className="w-full bg-slate-900/90 border border-slate-800 rounded-lg px-3.5 py-2.5 text-xs font-mono text-slate-100 focus:outline-none focus:border-blue-500 transition"
                 />
               </div>
@@ -453,7 +677,7 @@ export default function RepositoryDetailPage() {
                   type="text"
                   value={startCommand}
                   onChange={(e) => setStartCommand(e.target.value)}
-                  placeholder="npm start"
+                  placeholder="npm start (or uvicorn app.main:app --host 0.0.0.0 --port 8000)"
                   className="w-full bg-slate-900/90 border border-slate-800 rounded-lg px-3.5 py-2.5 text-xs font-mono text-slate-100 focus:outline-none focus:border-blue-500 transition"
                 />
               </div>
@@ -461,7 +685,7 @@ export default function RepositoryDetailPage() {
               {/* Port */}
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
-                  Port
+                  Application Port
                 </label>
                 <input
                   type="number"
@@ -481,7 +705,7 @@ export default function RepositoryDetailPage() {
                   type="text"
                   value={healthCheckUrl}
                   onChange={(e) => setHealthCheckUrl(e.target.value)}
-                  placeholder="/health"
+                  placeholder="/health (or /)"
                   className="w-full bg-slate-900/90 border border-slate-800 rounded-lg px-3.5 py-2.5 text-xs font-mono text-slate-100 focus:outline-none focus:border-blue-500 transition"
                 />
               </div>
@@ -489,7 +713,7 @@ export default function RepositoryDetailPage() {
               {/* Process Manager */}
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
-                  Process Manager
+                  Process Manager Engine
                 </label>
                 <select
                   value={processManager}
@@ -497,6 +721,9 @@ export default function RepositoryDetailPage() {
                   className="w-full bg-slate-900/90 border border-slate-800 rounded-lg px-3.5 py-2.5 text-xs font-mono text-slate-100 focus:outline-none focus:border-blue-500 transition"
                 >
                   <option value="node">Node.js Background Process</option>
+                  <option value="python">Python Background Process</option>
+                  <option value="docker-compose">Docker Compose Engine</option>
+                  <option value="docker">Docker Container Engine</option>
                   <option value="pm2">PM2 Process Manager</option>
                   <option value="custom">Direct Executable / Custom</option>
                 </select>
@@ -547,7 +774,116 @@ export default function RepositoryDetailPage() {
         </form>
       )}
 
-      {/* Tab 2: Environment Variables & Secrets */}
+      {/* Tab 2: Network & Port Diagnostics */}
+      {activeTab === "diagnostics" && (
+        <div className="p-6 rounded-2xl bg-[#0d1322] border border-slate-800/90 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wider flex items-center gap-2">
+                <Activity className="w-4 h-4 text-emerald-400" />
+                <span>Network & Port Diagnostics</span>
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Check socket binding, firewall rules, and live external port accessibility.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={runDiagnostics}
+              disabled={diagnosing}
+              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${diagnosing ? "animate-spin" : ""}`} />
+              <span>Refresh Diagnostics</span>
+            </button>
+          </div>
+
+          {diagnostics && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Process Status */}
+              <div className="p-4 rounded-xl bg-slate-900/70 border border-slate-800 space-y-2">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Process State</span>
+                <div className="flex items-center gap-2">
+                  <span className={`w-2.5 h-2.5 rounded-full ${diagnostics.processStatus?.status === "RUNNING" ? "bg-emerald-400 animate-pulse" : "bg-rose-500"}`} />
+                  <span className="text-sm font-bold text-white">{diagnostics.processStatus?.status || "STOPPED"}</span>
+                </div>
+                {diagnostics.processStatus?.pid && (
+                  <p className="text-[11px] font-mono text-slate-400">PID: {diagnostics.processStatus.pid} (uptime: {diagnostics.processStatus.uptime || 0}s)</p>
+                )}
+              </div>
+
+              {/* Local Port Listener */}
+              <div className="p-4 rounded-xl bg-slate-900/70 border border-slate-800 space-y-2">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Socket Listener (Port {diagnostics.port})</span>
+                <div className="flex items-center gap-2">
+                  <span className={`w-2.5 h-2.5 rounded-full ${diagnostics.localProbe?.open ? "bg-emerald-400" : "bg-amber-400"}`} />
+                  <span className="text-sm font-bold text-white">
+                    {diagnostics.localProbe?.open ? "Listening (Active)" : "Not Responding"}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  {diagnostics.localProbe?.open ? `Port ${diagnostics.port} accepts connections` : diagnostics.localProbe?.error || "Socket closed"}
+                </p>
+              </div>
+
+              {/* Firewall / UFW */}
+              <div className="p-4 rounded-xl bg-slate-900/70 border border-slate-800 space-y-2">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">VPS Firewall (UFW)</span>
+                <div className="flex items-center gap-2">
+                  <span className={`w-2.5 h-2.5 rounded-full ${diagnostics.ufwPortAllowed ? "bg-emerald-400" : "bg-amber-400"}`} />
+                  <span className="text-sm font-bold text-white">
+                    {diagnostics.ufwPortAllowed ? "Port Allowed" : "Rule Status"}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 font-mono line-clamp-1">{diagnostics.ufwStatus}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Diagnostic Advice & 1-Click Fixes */}
+          <div className="p-4 rounded-xl bg-blue-950/20 border border-blue-900/40 space-y-3">
+            <h4 className="text-xs font-bold text-blue-400 uppercase tracking-wider flex items-center gap-1.5">
+              <Wrench className="w-3.5 h-3.5" />
+              <span>Troubleshooting & One-Click Fixes</span>
+            </h4>
+
+            {diagnostics?.suggestions?.length > 0 ? (
+              <ul className="space-y-1.5 text-xs text-slate-300 list-disc list-inside">
+                {diagnostics.suggestions.map((s: string, idx: number) => (
+                  <li key={idx}>{s}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-xs text-slate-400">Run diagnostics to inspect port connectivity.</p>
+            )}
+
+            <div className="flex flex-wrap items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={handleOpenFirewall}
+                disabled={firewallLoading}
+                className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition disabled:opacity-50"
+              >
+                <Shield className="w-3.5 h-3.5" />
+                <span>{firewallLoading ? "Opening..." : `Open Port ${port || 3000} in VPS Firewall (UFW)`}</span>
+              </button>
+
+              <a
+                href={`http://${publicHost}:${port || 3000}`}
+                target="_blank"
+                rel="noreferrer"
+                className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition"
+              >
+                <Globe className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Test Link: http://{publicHost}:{port || 3000}</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab 3: Environment Variables & Secrets */}
       {activeTab === "env" && (
         <div className="p-6 rounded-2xl bg-[#0d1322] border border-slate-800/90 space-y-6">
           <div className="flex items-center justify-between">
@@ -642,7 +978,7 @@ export default function RepositoryDetailPage() {
         </div>
       )}
 
-      {/* Tab 3: Application Live Logs */}
+      {/* Tab 4: Application Live Logs */}
       {activeTab === "logs" && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
@@ -661,7 +997,7 @@ export default function RepositoryDetailPage() {
         </div>
       )}
 
-      {/* Tab 4: Deployment History */}
+      {/* Tab 5: Deployment History */}
       {activeTab === "deployments" && (
         <div className="p-6 rounded-2xl bg-[#0d1322] border border-slate-800/90 space-y-4">
           <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wider">

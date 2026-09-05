@@ -40,6 +40,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const {
       branch = "main",
       basePath = "",
+      rootDirectory = "",
+      frameworkPreset = "custom",
       installCommand = "npm install",
       buildCommand = "npm run build",
       startCommand = "npm start",
@@ -74,6 +76,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       update: {
         branch,
         basePath: basePath.trim(),
+        rootDirectory: rootDirectory.trim(),
+        frameworkPreset: frameworkPreset.trim(),
         installCommand: installCommand.trim(),
         buildCommand: buildCommand.trim(),
         startCommand: startCommand.trim(),
@@ -87,6 +91,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         repositoryId: repo.id,
         branch,
         basePath: basePath.trim(),
+        rootDirectory: rootDirectory.trim(),
+        frameworkPreset: frameworkPreset.trim(),
         installCommand: installCommand.trim(),
         buildCommand: buildCommand.trim(),
         startCommand: startCommand.trim(),
