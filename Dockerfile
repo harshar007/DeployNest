@@ -33,7 +33,7 @@ ENV NODE_ENV=production
 ENV PORT=29870
 ENV HOST=0.0.0.0
 
-RUN apk add --no-cache git bash openssh
+RUN apk add --no-cache git bash openssh docker-cli docker-cli-compose
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 deploynest
