@@ -145,6 +145,12 @@ export class ProcessManager {
       return false;
     }
 
+    // If ChildProcess instance has an exitCode or signalCode, it has exited
+    if (procRecord.process && (procRecord.process.exitCode !== null || procRecord.process.signalCode !== null)) {
+      procRecord.status = procRecord.process.exitCode === 0 ? "STOPPED" : "FAILED";
+      return false;
+    }
+
     try {
       // Sending signal 0 checks whether the process exists without killing it
       process.kill(procRecord.pid, 0);
@@ -230,41 +236,47 @@ export class ProcessManager {
   }
 
   /**
-   * Tests whether a given TCP port is open and listening locally
+   * Tests whether a given TCP port is open and listening locally (checks IPv4 and IPv6)
    */
-  static testPortOpen(port: number, timeoutMs = 2000): Promise<boolean> {
-    return new Promise((resolve) => {
-      const socket = new net.Socket();
-      let resolved = false;
+  static async testPortOpen(port: number, timeoutMs = 2000): Promise<boolean> {
+    const checkHost = (host: string): Promise<boolean> => {
+      return new Promise((resolve) => {
+        const socket = new net.Socket();
+        let resolved = false;
 
-      socket.setTimeout(timeoutMs);
+        socket.setTimeout(timeoutMs);
 
-      socket.on("connect", () => {
-        if (!resolved) {
-          resolved = true;
-          socket.destroy();
-          resolve(true);
-        }
+        socket.on("connect", () => {
+          if (!resolved) {
+            resolved = true;
+            socket.destroy();
+            resolve(true);
+          }
+        });
+
+        socket.on("timeout", () => {
+          if (!resolved) {
+            resolved = true;
+            socket.destroy();
+            resolve(false);
+          }
+        });
+
+        socket.on("error", () => {
+          if (!resolved) {
+            resolved = true;
+            socket.destroy();
+            resolve(false);
+          }
+        });
+
+        socket.connect(port, host);
       });
+    };
 
-      socket.on("timeout", () => {
-        if (!resolved) {
-          resolved = true;
-          socket.destroy();
-          resolve(false);
-        }
-      });
-
-      socket.on("error", () => {
-        if (!resolved) {
-          resolved = true;
-          socket.destroy();
-          resolve(false);
-        }
-      });
-
-      socket.connect(port, "127.0.0.1");
-    });
+    const res127 = await checkHost("127.0.0.1");
+    if (res127) return true;
+    return checkHost("::1");
   }
 
   /**

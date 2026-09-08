@@ -29,7 +29,7 @@ class DeploymentQueue {
         console.error(`[Queue] Error running job ${job.deploymentId}:`, err);
       } finally {
         this.isProcessing = false;
-        this.processNext();
+        setTimeout(() => this.processNext(), 0);
       }
     } else {
       this.isProcessing = false;
@@ -41,11 +41,9 @@ class DeploymentQueue {
   }
 }
 
-const globalForQueue = global as unknown as { deploymentQueue: DeploymentQueue };
+const globalForQueue = globalThis as unknown as { deploynestDeploymentQueue?: DeploymentQueue };
 
 export const deploymentQueue =
-  globalForQueue.deploymentQueue || new DeploymentQueue();
+  globalForQueue.deploynestDeploymentQueue || new DeploymentQueue();
 
-if (process.env.NODE_ENV !== "production") {
-  globalForQueue.deploymentQueue = deploymentQueue;
-}
+globalForQueue.deploynestDeploymentQueue = deploymentQueue;
