@@ -115,15 +115,26 @@ npm run prisma:generate
 
 ### 4. Launch DeployNest
 
-Start the development server (runs on port `29870`):
-
+#### Option 1: Python FastAPI Backend (High-Performance Async Backend)
 ```bash
-npm run dev
+# Install Python dependencies
+pip install -r requirements.txt
+
+# Run Python FastAPI Backend (runs on 0.0.0.0:8000 with live docs at /docs)
+python run_backend.py
+# or via npm script:
+npm run backend:py
+
+# Run full backend test suite
+npm run test:py
 ```
 
-Or build and run in production mode:
-
+#### Option 2: Fullstack Next.js Server
 ```bash
+# Start Next.js development server (runs on port 29870)
+npm run dev
+
+# Or build and run in production mode:
 npm run build
 npm start
 ```
@@ -132,6 +143,7 @@ Open your browser and navigate to:
 ```text
 http://localhost:29870/setup
 # or http://<YOUR_VPS_IP>:29870/setup
+# FastAPI interactive API docs: http://localhost:8000/docs
 ```
 
 ---
