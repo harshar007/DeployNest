@@ -161,6 +161,11 @@ process.exit(1);
     return failed == 0
 
 
+def test_process_lifecycle():
+    success = asyncio.run(run_lifecycle_tests())
+    assert success is True
+
+
 if __name__ == "__main__":
     success = asyncio.run(run_lifecycle_tests())
     sys.exit(0 if success else 1)

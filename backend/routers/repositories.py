@@ -581,6 +581,12 @@ def start_app(
         else os.path.abspath(os.path.join(base_root, repo.owner, repo.name))
     )
 
+    working_dir = target_dir
+    if repo.config.rootDirectory and repo.config.rootDirectory.strip():
+        candidate = os.path.abspath(os.path.join(target_dir, repo.config.rootDirectory.strip()))
+        if os.path.exists(candidate):
+            working_dir = candidate
+
     env_map = {}
     for ev in repo.envVars:
         env_map[ev.key] = decrypt(ev.encryptedValue)
@@ -588,7 +594,7 @@ def start_app(
     result = ProcessManager.start(
         repo.id,
         repo.config.startCommand,
-        target_dir,
+        working_dir,
         env_map,
         repo.config.port,
     )

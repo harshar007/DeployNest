@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import (
     Column,
     String,
@@ -18,6 +18,10 @@ def generate_uuid() -> str:
     return str(uuid.uuid4())
 
 
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 class User(Base):
     __tablename__ = "User"
 
@@ -26,8 +30,8 @@ class User(Base):
     email = Column(String, unique=True, nullable=False)
     passwordHash = Column(String, nullable=False)
     role = Column(String, nullable=False, default="admin")
-    createdAt = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updatedAt = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    createdAt = Column(DateTime, nullable=False, default=utc_now)
+    updatedAt = Column(DateTime, nullable=False, default=utc_now, onupdate=utc_now)
 
     githubConns = relationship("GithubConnection", back_populates="user", cascade="all, delete-orphan")
 
@@ -52,8 +56,8 @@ class GithubConnection(Base):
     avatarUrl = Column(String, nullable=True)
     encryptedAccessToken = Column(String, nullable=False)
     lastValidatedAt = Column(DateTime, nullable=True)
-    createdAt = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updatedAt = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    createdAt = Column(DateTime, nullable=False, default=utc_now)
+    updatedAt = Column(DateTime, nullable=False, default=utc_now, onupdate=utc_now)
 
     user = relationship("User", back_populates="githubConns")
 
@@ -85,9 +89,9 @@ class Repository(Base):
     description = Column(String, nullable=True)
     language = Column(String, nullable=True)
     status = Column(String, nullable=False, default="NOT_CONFIGURED")
-    syncedAt = Column(DateTime, nullable=False, default=datetime.utcnow)
-    createdAt = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updatedAt = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    syncedAt = Column(DateTime, nullable=False, default=utc_now)
+    createdAt = Column(DateTime, nullable=False, default=utc_now)
+    updatedAt = Column(DateTime, nullable=False, default=utc_now, onupdate=utc_now)
 
     config = relationship("DeploymentConfig", back_populates="repository", uselist=False, cascade="all, delete-orphan")
     deployments = relationship("Deployment", back_populates="repository", cascade="all, delete-orphan", order_by="desc(Deployment.createdAt)")
@@ -137,8 +141,8 @@ class DeploymentConfig(Base):
     healthCheckUrl = Column(String, nullable=True, default="/health")
     autoDeploy = Column(Boolean, nullable=False, default=True)
     webhookId = Column(String, nullable=True)
-    createdAt = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updatedAt = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    createdAt = Column(DateTime, nullable=False, default=utc_now)
+    updatedAt = Column(DateTime, nullable=False, default=utc_now, onupdate=utc_now)
 
     repository = relationship("Repository", back_populates="config")
 
@@ -179,8 +183,8 @@ class Deployment(Base):
     duration = Column(Integer, nullable=True)
     errorMessage = Column(String, nullable=True)
     rollbackFromId = Column(String, nullable=True)
-    createdAt = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updatedAt = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    createdAt = Column(DateTime, nullable=False, default=utc_now)
+    updatedAt = Column(DateTime, nullable=False, default=utc_now, onupdate=utc_now)
 
     repository = relationship("Repository", back_populates="deployments")
     logs = relationship("DeploymentLog", back_populates="deployment", cascade="all, delete-orphan", order_by="asc(DeploymentLog.timestamp)")
@@ -221,7 +225,7 @@ class DeploymentLog(Base):
 
     id = Column(String, primary_key=True, default=generate_uuid)
     deploymentId = Column(String, ForeignKey("Deployment.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
-    timestamp = Column(DateTime, nullable=False, default=datetime.utcnow)
+    timestamp = Column(DateTime, nullable=False, default=utc_now)
     level = Column(String, nullable=False, default="info")
     stage = Column(String, nullable=False, default="GENERAL")
     message = Column(String, nullable=False)
@@ -247,8 +251,8 @@ class EnvironmentVariable(Base):
     key = Column(String, nullable=False)
     encryptedValue = Column(String, nullable=False)
     isSecret = Column(Boolean, nullable=False, default=True)
-    createdAt = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updatedAt = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    createdAt = Column(DateTime, nullable=False, default=utc_now)
+    updatedAt = Column(DateTime, nullable=False, default=utc_now, onupdate=utc_now)
 
     __table_args__ = (UniqueConstraint("repositoryId", "key", name="EnvironmentVariable_repositoryId_key_key"),)
 
@@ -271,7 +275,7 @@ class SystemSetting(Base):
     id = Column(String, primary_key=True, default=generate_uuid)
     key = Column(String, unique=True, nullable=False)
     value = Column(String, nullable=False)
-    updatedAt = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updatedAt = Column(DateTime, nullable=False, default=utc_now, onupdate=utc_now)
 
     def to_dict(self):
         return {

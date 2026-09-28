@@ -5,7 +5,10 @@ services:
       dockerfile: Dockerfile
     container_name: deploynest
     restart: unless-stopped
-    network_mode: "host"
+    ports:
+      - "29870:29870"
+      - "8000:8000"
+      - "3000-3020:3000-3020"
     environment:
       - NODE_ENV=${NODE_ENV:-production}
       - HOST=${HOST:-0.0.0.0}

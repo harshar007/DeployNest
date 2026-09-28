@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 import bcrypt
 import jwt
@@ -32,7 +32,7 @@ def generate_token(payload: Dict[str, Any]) -> str:
     Generates a JWT session token with expiration
     """
     data = payload.copy()
-    data["exp"] = datetime.utcnow() + timedelta(days=JWT_EXPIRATION_DAYS)
+    data["exp"] = datetime.now(timezone.utc) + timedelta(days=JWT_EXPIRATION_DAYS)
     return jwt.encode(data, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -48,7 +48,7 @@ async def connect_github(
         connection.githubUsername = profile["username"]
         connection.avatarUrl = profile["avatarUrl"]
         connection.encryptedAccessToken = encrypted_token
-        connection.lastValidatedAt = datetime.utcnow()
+        connection.lastValidatedAt = datetime.now(timezone.utc)
     else:
         connection = GithubConnection(
             userId=user.id,
@@ -56,7 +56,7 @@ async def connect_github(
             githubUsername=profile["username"],
             avatarUrl=profile["avatarUrl"],
             encryptedAccessToken=encrypted_token,
-            lastValidatedAt=datetime.utcnow(),
+            lastValidatedAt=datetime.now(timezone.utc),
         )
         db.add(connection)
     db.commit()
@@ -78,7 +78,7 @@ async def connect_github(
                 existing_repo.isPrivate = r["isPrivate"]
                 existing_repo.description = r["description"]
                 existing_repo.language = r["language"]
-                existing_repo.syncedAt = datetime.utcnow()
+                existing_repo.syncedAt = datetime.now(timezone.utc)
             else:
                 new_repo = Repository(
                     githubRepoId=repo_id_str,
@@ -92,7 +92,7 @@ async def connect_github(
                     description=r["description"],
                     language=r["language"],
                     status="NOT_CONFIGURED",
-                    syncedAt=datetime.utcnow(),
+                    syncedAt=datetime.now(timezone.utc),
                 )
                 db.add(new_repo)
             synced_count += 1
@@ -184,7 +184,7 @@ async def sync_github(
             existing_repo.isPrivate = r["isPrivate"]
             existing_repo.description = r["description"]
             existing_repo.language = r["language"]
-            existing_repo.syncedAt = datetime.utcnow()
+            existing_repo.syncedAt = datetime.now(timezone.utc)
         else:
             new_repo = Repository(
                 githubRepoId=repo_id_str,
@@ -198,12 +198,12 @@ async def sync_github(
                 description=r["description"],
                 language=r["language"],
                 status="NOT_CONFIGURED",
-                syncedAt=datetime.utcnow(),
+                syncedAt=datetime.now(timezone.utc),
             )
             db.add(new_repo)
         synced_count += 1
 
-    connection.lastValidatedAt = datetime.utcnow()
+    connection.lastValidatedAt = datetime.now(timezone.utc)
     db.commit()
 
     return {

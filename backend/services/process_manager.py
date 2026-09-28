@@ -6,7 +6,7 @@ import asyncio
 import signal
 import subprocess
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 
@@ -95,7 +95,7 @@ class ProcessManager:
                 process=proc,
                 pid=proc.pid,
                 status="RUNNING",
-                started_at=datetime.utcnow(),
+                started_at=datetime.now(timezone.utc),
                 logs=[],
             )
 
@@ -105,7 +105,7 @@ class ProcessManager:
             def append_to_file(text: str):
                 try:
                     with open(log_file_path, "a", encoding="utf-8") as f:
-                        f.write(f"[{datetime.utcnow().isoformat()}] {text}\n")
+                        f.write(f"[{datetime.now(timezone.utc).isoformat()}] {text}\n")
                 except Exception:
                     pass
 
@@ -280,7 +280,7 @@ class ProcessManager:
 
         uptime = None
         if proc_record.started_at and status == "RUNNING":
-            uptime = int((datetime.utcnow() - proc_record.started_at).total_seconds())
+            uptime = int((datetime.now(timezone.utc) - proc_record.started_at).total_seconds())
 
         return {
             "status": status,
@@ -313,7 +313,7 @@ class ProcessManager:
                 clean = line.strip()
                 if clean:
                     proc_record.logs.append({
-                        "timestamp": datetime.utcnow().isoformat(),
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
                         "text": clean,
                         "stream": stream,
                     })

@@ -3,7 +3,7 @@ import sys
 import time
 import asyncio
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Optional, Callable, Any
 import httpx
 
@@ -30,7 +30,7 @@ class DeploymentRunner:
             repository = deployment.repository
             config = repository.config
 
-            start_time = datetime.utcnow()
+            start_time = datetime.now(timezone.utc)
             deployment.status = "PREPARING"
             deployment.startedAt = start_time
             repository.status = "DEPLOYING"
@@ -285,7 +285,7 @@ class DeploymentRunner:
             add_log("VERIFY", "Application process and port verified stable.")
 
             # 12. Complete Deployment as SUCCESS
-            completed_at = datetime.utcnow()
+            completed_at = datetime.now(timezone.utc)
             duration_s = int((completed_at - start_time).total_seconds())
 
             deployment.status = "SUCCESS"
@@ -298,7 +298,7 @@ class DeploymentRunner:
 
         except Exception as err:
             print(f"[DEPLOY] Deployment {deployment_id} failed: {err}")
-            completed_at = datetime.utcnow()
+            completed_at = datetime.now(timezone.utc)
             duration_s = int((completed_at - start_time).total_seconds()) if "start_time" in locals() else 0
 
             try:
