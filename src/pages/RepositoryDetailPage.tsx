@@ -1,8 +1,5 @@
-"use client";
-
 import React, { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   GitBranch,
   Rocket,
@@ -34,10 +31,9 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { TerminalViewer } from "@/components/TerminalViewer";
 import { FRAMEWORK_PRESETS, FrameworkPreset } from "@/lib/presets";
 
-export default function RepositoryDetailPage() {
-  const params = useParams();
-  const router = useRouter();
-  const repoId = params.id as string;
+export const RepositoryDetailPage: React.FC = () => {
+  const { id: repoId } = useParams<{ id: string }>();
+  const navigate = useNavigate();
 
   const [repo, setRepo] = useState<any>(null);
   const [branches, setBranches] = useState<string[]>([]);
@@ -273,7 +269,7 @@ export default function RepositoryDetailPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to trigger deployment");
 
-      router.push(`/dashboard/deployments/${data.deploymentId}`);
+      navigate(`/dashboard/deployments/${data.deploymentId}`);
     } catch (err: any) {
       setMessage({ type: "error", text: err.message });
     } finally {
@@ -359,7 +355,7 @@ export default function RepositoryDetailPage() {
     return (
       <div className="p-8 text-center space-y-4">
         <h2 className="text-xl font-bold text-white">Repository Not Found</h2>
-        <Link href="/dashboard/repositories" className="text-sm text-blue-400 hover:underline">
+        <Link to="/dashboard/repositories" className="text-sm text-blue-400 hover:underline">
           Return to Repositories
         </Link>
       </div>
@@ -373,7 +369,7 @@ export default function RepositoryDetailPage() {
     <div className="space-y-6 max-w-6xl mx-auto pb-16">
       {/* Breadcrumb Header */}
       <div className="flex items-center gap-2 text-xs text-slate-400">
-        <Link href="/dashboard/repositories" className="hover:text-slate-200 flex items-center gap-1">
+        <Link to="/dashboard/repositories" className="hover:text-slate-200 flex items-center gap-1">
           <ArrowLeft className="w-3.5 h-3.5" />
           <span>Repositories</span>
         </Link>
@@ -1042,8 +1038,7 @@ export default function RepositoryDetailPage() {
                         {new Date(d.createdAt).toLocaleString()}
                       </td>
                       <td className="py-3 text-right">
-                        <Link
-                          href={`/dashboard/deployments/${d.id}`}
+                        <Link to={`/dashboard/deployments/${d.id}`}
                           className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition"
                         >
                           View Logs

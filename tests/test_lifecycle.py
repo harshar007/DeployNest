@@ -23,7 +23,7 @@ async def run_lifecycle_tests():
 
     # 1. Create mock Node/Python app 1
     server_code_1 = """
-const http = require('http');
+import http from 'http';
 const port = process.env.PORT || 39801;
 const server = http.createServer((req, res) => {
   if (req.url === '/health') {
@@ -43,7 +43,7 @@ server.listen(port, '0.0.0.0', () => {
 
     # 2. Create mock Node app 2
     server_code_2 = """
-const http = require('http');
+import http from 'http';
 const port = process.env.PORT || 39802;
 const server = http.createServer((req, res) => {
   res.writeHead(200);

@@ -1,9 +1,10 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 
-from backend.config import HOST, PORT
+from backend.config import HOST, PORT, BASE_DIR
 from backend.database import init_db
 from backend.services.queue_service import deployment_queue
 from backend.routers import (
@@ -59,15 +60,39 @@ app.include_router(deployments.router)
 app.include_router(system.router)
 app.include_router(webhooks.router)
 
+dist_dir = BASE_DIR / "dist"
+if (dist_dir / "assets").exists():
+    app.mount("/assets", StaticFiles(directory=str(dist_dir / "assets")), name="assets")
+
 
 @app.get("/")
-def root_status():
+def root_status(request: Request):
+    index_file = dist_dir / "index.html"
+    accept_header = request.headers.get("accept", "")
+    if index_file.exists() and "text/html" in accept_header:
+        return FileResponse(index_file)
     return {
         "status": "online",
         "service": "DeployNest Python Backend",
         "version": "1.0.0",
         "docs": "/docs",
     }
+
+
+@app.get("/{full_path:path}")
+async def serve_spa_fallback(request: Request, full_path: str):
+    if full_path.startswith("api/") or full_path in ("docs", "openapi.json", "redoc"):
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
+
+    file_path = dist_dir / full_path
+    if full_path and file_path.is_file():
+        return FileResponse(file_path)
+
+    index_file = dist_dir / "index.html"
+    if index_file.exists():
+        return FileResponse(index_file)
+
+    return JSONResponse(status_code=404, content={"detail": "Not Found"})
 
 
 if __name__ == "__main__":
