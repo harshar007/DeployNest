@@ -1,7 +1,5 @@
-"use client";
-
 import React, { useState, useEffect, useRef } from "react";
-import { Terminal as TerminalIcon, Copy, Check, Download } from "lucide-react";
+import { Terminal as TerminalIcon, Copy, Check } from "lucide-react";
 
 export interface LogItem {
   id?: string;

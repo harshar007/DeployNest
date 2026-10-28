@@ -1,11 +1,9 @@
-"use client";
-
 import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { LogOut, User, Globe, Bell, RefreshCw } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { LogOut, RefreshCw } from "lucide-react";
 
 export const Navbar: React.FC = () => {
-  const router = useRouter();
+  const navigate = useNavigate();
   const [user, setUser] = useState<{ name: string; email: string } | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
@@ -24,8 +22,7 @@ export const Navbar: React.FC = () => {
     setIsLoggingOut(true);
     try {
       await fetch("/api/auth/logout", { method: "POST" });
-      router.push("/login");
-      router.refresh();
+      navigate("/login");
     } catch {
       setIsLoggingOut(false);
     }

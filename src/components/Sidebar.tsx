@@ -1,8 +1,5 @@
-"use client";
-
 import React from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   GitBranch,
@@ -11,12 +8,12 @@ import {
   Github,
   Server,
   Settings,
-  Terminal,
   ShieldCheck,
 } from "lucide-react";
 
 export const Sidebar: React.FC = () => {
-  const pathname = usePathname();
+  const location = useLocation();
+  const pathname = location.pathname;
 
   const navigation = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -62,7 +59,7 @@ export const Sidebar: React.FC = () => {
             return (
               <Link
                 key={item.name}
-                href={item.href}
+                to={item.href}
                 className={`flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
                   isActive
                     ? "bg-blue-600/15 text-blue-400 border border-blue-500/30 font-semibold shadow-sm"

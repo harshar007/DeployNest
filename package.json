@@ -2,17 +2,13 @@
   "name": "deploynest",
   "version": "1.0.0",
   "description": "DeployNest - Centralized Self-Hosted CI/CD Hub",
-  "main": "index.js",
+  "type": "module",
   "scripts": {
-    "dev": "next dev -p 29870 -H 0.0.0.0",
-    "build": "prisma generate && next build",
-    "start": "next start -p 29870 -H 0.0.0.0",
+    "dev": "vite --port 29870 --host 0.0.0.0",
+    "build": "tsc && vite build",
+    "preview": "vite preview --port 29870 --host 0.0.0.0",
     "backend:py": "python run_backend.py",
-    "test:py": "python -m pytest tests/test_api_suite.py && python tests/test_lifecycle.py",
-    "prisma:generate": "prisma generate",
-    "prisma:push": "prisma db push",
-    "prisma:studio": "prisma studio",
-    "lint": "next lint"
+    "test:py": "python -m pytest tests/test_api_suite.py && python tests/test_lifecycle.py"
   },
   "keywords": [
     "cicd",
@@ -21,33 +17,29 @@
     "automation",
     "vps",
     "devops",
-    "deploynest"
+    "deploynest",
+    "react"
   ],
   "author": "DeployNest Team",
   "license": "MIT",
   "dependencies": {
-    "@octokit/rest": "^21.0.2",
-    "@prisma/client": "^5.22.0",
-    "bcryptjs": "^2.4.3",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
-    "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.460.0",
-    "next": "^14.2.18",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0",
     "tailwind-merge": "^2.5.4"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
-    "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^20.17.6",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.49",
-    "prisma": "^5.22.0",
     "tailwindcss": "^3.4.15",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
   }
 }
