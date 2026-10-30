@@ -52,7 +52,8 @@ def get_current_user_optional(
     db: Session = Depends(get_db)
 ) -> Optional[Dict[str, Any]]:
     """
-    Resolves current user from cookie or Authorization header, with single-tenant VPS auto-init fallback.
+    Resolves current user from cookie or Authorization header.
+    Returns None if unauthenticated.
     """
     # 1. Try extracting token from cookie
     token = request.cookies.get(COOKIE_NAME)
@@ -75,30 +76,7 @@ def get_current_user_optional(
                     "role": user.role,
                 }
 
-    # 3. Self-hosted VPS single-tenant fallback: Resolve or auto-initialize admin
-    try:
-        admin = db.query(User).order_by(User.createdAt.asc()).first()
-        if not admin:
-            default_password_hash = hash_password("admin123")
-            admin = User(
-                name="Administrator",
-                email="admin@deploynest.local",
-                passwordHash=default_password_hash,
-                role="admin",
-            )
-            db.add(admin)
-            db.commit()
-            db.refresh(admin)
-
-        return {
-            "userId": admin.id,
-            "email": admin.email,
-            "name": admin.name,
-            "role": admin.role,
-        }
-    except Exception as db_err:
-        print(f"Failed to resolve fallback user: {db_err}")
-        return None
+    return None
 
 
 def get_current_user(

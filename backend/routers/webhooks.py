@@ -37,7 +37,10 @@ async def handle_github_webhook(
 
     # Verify HMAC-SHA256 signature if secret is configured
     secret = GITHUB_WEBHOOK_SECRET or "deploynest_default_webhook_secret_key"
-    if signature and secret:
+    if secret:
+        if not signature:
+            raise HTTPException(status_code=401, detail="Missing webhook signature")
+
         computed_sig = "sha256=" + hmac.new(
             secret.encode("utf-8"),
             body_bytes,

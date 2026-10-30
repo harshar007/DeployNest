@@ -18,8 +18,6 @@ from backend.services.auth_service import hash_password, generate_token
 from backend.services.crypto_service import encrypt
 from backend.config import GITHUB_WEBHOOK_SECRET, COOKIE_NAME
 
-client = TestClient(app)
-
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_database():
@@ -27,6 +25,7 @@ def setup_database():
 
 
 def test_root():
+    client = TestClient(app)
     response = client.get("/")
     assert response.status_code == 200
     data = response.json()
@@ -35,7 +34,19 @@ def test_root():
 
 
 def test_auth_flow():
+    client = TestClient(app)
     db = SessionLocal()
+
+    # 1. Check unauthenticated /api/auth/me returns authenticated: False
+    unauth_me = client.get("/api/auth/me")
+    assert unauth_me.status_code == 200
+    assert unauth_me.json().get("authenticated") is False
+
+    # 2. Check protected route without credentials returns 401
+    unauth_prot = client.get("/api/system/health")
+    assert unauth_prot.status_code == 401
+    assert "error" in unauth_prot.json()
+
     # Check setup status
     res = client.get("/api/auth/setup")
     assert res.status_code == 200
@@ -59,12 +70,9 @@ def test_auth_flow():
     data = login_res.json()
     assert data.get("success") is True
     assert data.get("user", {}).get("email") == "admin@deploynest.local"
-    assert COOKIE_NAME in login_res.cookies
 
-    session_cookie = login_res.cookies[COOKIE_NAME]
-
-    # Test /api/auth/me with session cookie
-    me_res = client.get("/api/auth/me", cookies={COOKIE_NAME: session_cookie})
+    # Test /api/auth/me with authenticated client
+    me_res = client.get("/api/auth/me")
     assert me_res.status_code == 200
     me_data = me_res.json()
     assert me_data.get("authenticated") is True
@@ -74,16 +82,23 @@ def test_auth_flow():
     logout_res = client.post("/api/auth/logout")
     assert logout_res.status_code == 200
 
+    # Verify unauthenticated after logout
+    after_logout_client = TestClient(app)
+    after_logout_me = after_logout_client.get("/api/auth/me")
+    assert after_logout_me.status_code == 200
+    assert after_logout_me.json().get("authenticated") is False
+
     db.close()
 
 
 def test_system_endpoints():
+    client = TestClient(app)
     # Login as admin
     login_res = client.post("/api/auth/login", json={"email": "admin@deploynest.local", "password": "admin123"})
-    cookie = {COOKIE_NAME: login_res.cookies.get(COOKIE_NAME)}
+    assert login_res.status_code == 200
 
     # Health
-    res_health = client.get("/api/system/health", cookies=cookie)
+    res_health = client.get("/api/system/health")
     assert res_health.status_code == 200
     health = res_health.json().get("health", {})
     assert "cpu" in health
@@ -92,7 +107,7 @@ def test_system_endpoints():
     assert "os" in health
 
     # Stats
-    res_stats = client.get("/api/system/stats", cookies=cookie)
+    res_stats = client.get("/api/system/stats")
     assert res_stats.status_code == 200
     stats = res_stats.json().get("stats", {})
     assert "totalRepositories" in stats
@@ -101,9 +116,10 @@ def test_system_endpoints():
 
 
 def test_repository_lifecycle():
+    client = TestClient(app)
     db = SessionLocal()
     login_res = client.post("/api/auth/login", json={"email": "admin@deploynest.local", "password": "admin123"})
-    cookie = {COOKIE_NAME: login_res.cookies.get(COOKIE_NAME)}
+    assert login_res.status_code == 200
 
     # 1. Create a dummy test repo in DB
     dummy_repo = db.query(Repository).filter(Repository.githubRepoId == "999999").first()
@@ -123,13 +139,13 @@ def test_repository_lifecycle():
     repo_id = dummy_repo.id
 
     # 2. List repositories
-    list_res = client.get("/api/repositories", cookies=cookie)
+    list_res = client.get("/api/repositories")
     assert list_res.status_code == 200
     repos = list_res.json().get("repositories", [])
     assert any(r["id"] == repo_id for r in repos)
 
     # 3. Get single repository
-    get_res = client.get(f"/api/repositories/{repo_id}", cookies=cookie)
+    get_res = client.get(f"/api/repositories/{repo_id}")
     assert get_res.status_code == 200
     assert get_res.json().get("repository", {}).get("id") == repo_id
 
@@ -147,7 +163,7 @@ def test_repository_lifecycle():
         "healthCheckUrl": "/docs",
         "autoDeploy": True,
     }
-    config_res = client.post(f"/api/repositories/{repo_id}/config", json=config_payload, cookies=cookie)
+    config_res = client.post(f"/api/repositories/{repo_id}/config", json=config_payload)
     assert config_res.status_code == 200
     assert config_res.json().get("success") is True
     assert config_res.json().get("config", {}).get("port") == 8080
@@ -156,7 +172,6 @@ def test_repository_lifecycle():
     env_res = client.post(
         f"/api/repositories/{repo_id}/env",
         json={"key": "SECRET_KEY", "value": "super_secret_jwt_value", "isSecret": True},
-        cookies=cookie,
     )
     assert env_res.status_code == 200
     env_data = env_res.json().get("envVar", {})
@@ -165,23 +180,23 @@ def test_repository_lifecycle():
     env_id = env_data.get("id")
 
     # List env vars
-    list_env_res = client.get(f"/api/repositories/{repo_id}/env", cookies=cookie)
+    list_env_res = client.get(f"/api/repositories/{repo_id}/env")
     assert list_env_res.status_code == 200
     assert any(e["key"] == "SECRET_KEY" for e in list_env_res.json().get("envVars", []))
 
     # Delete env var
-    del_env_res = client.delete(f"/api/repositories/{repo_id}/env?envId={env_id}", cookies=cookie)
+    del_env_res = client.delete(f"/api/repositories/{repo_id}/env?envId={env_id}")
     assert del_env_res.status_code == 200
 
     # 6. Repository Diagnosis
-    diag_res = client.get(f"/api/repositories/{repo_id}/diagnose", cookies=cookie)
+    diag_res = client.get(f"/api/repositories/{repo_id}/diagnose")
     assert diag_res.status_code == 200
     diagnosis = diag_res.json().get("diagnosis", {})
     assert diagnosis.get("port") == 8080
     assert "statusText" in diagnosis
 
     # 7. Trigger Manual Deployment
-    deploy_res = client.post(f"/api/repositories/{repo_id}/deploy", json={"branch": "main"}, cookies=cookie)
+    deploy_res = client.post(f"/api/repositories/{repo_id}/deploy", json={"branch": "main"})
     assert deploy_res.status_code == 200
     deploy_data = deploy_res.json()
     assert deploy_data.get("success") is True
@@ -189,23 +204,31 @@ def test_repository_lifecycle():
     assert deployment_id is not None
 
     # 8. Fetch Deployment details
-    dep_detail_res = client.get(f"/api/deployments/{deployment_id}", cookies=cookie)
+    dep_detail_res = client.get(f"/api/deployments/{deployment_id}")
     assert dep_detail_res.status_code == 200
     assert dep_detail_res.json().get("deployment", {}).get("id") == deployment_id
 
     # 9. Test Rollback Deployment
-    rollback_res = client.post(f"/api/deployments/{deployment_id}/rollback", cookies=cookie)
+    rollback_res = client.post(f"/api/deployments/{deployment_id}/rollback")
     assert rollback_res.status_code == 200
     assert rollback_res.json().get("success") is True
+    rollback_id = rollback_res.json().get("deploymentId")
+
+    # Verify rollback deployment preserved rollbackFromId
+    rb_dep = db.query(Deployment).filter(Deployment.id == rollback_id).first()
+    assert rb_dep is not None
+    assert rb_dep.triggerType == "ROLLBACK"
+    assert rb_dep.rollbackFromId == deployment_id
 
     # Cleanup test repo
-    del_repo_res = client.delete(f"/api/repositories/{repo_id}", cookies=cookie)
+    del_repo_res = client.delete(f"/api/repositories/{repo_id}")
     assert del_repo_res.status_code == 200
 
     db.close()
 
 
 def test_github_webhook():
+    client = TestClient(app)
     db = SessionLocal()
 
     # Create dummy repo
@@ -236,7 +259,7 @@ def test_github_webhook():
     assert ping_res.status_code == 200
     assert "Pong" in ping_res.json().get("message", "")
 
-    # 2. Push webhook with HMAC signature
+    # 2. Webhook push without signature should fail 401
     payload = {
         "ref": "refs/heads/main",
         "repository": {
@@ -251,6 +274,27 @@ def test_github_webhook():
         },
     }
     payload_bytes = json.dumps(payload).encode("utf-8")
+
+    unsigned_res = client.post(
+        "/api/webhooks/github",
+        headers={"x-github-event": "push", "content-type": "application/json"},
+        content=payload_bytes,
+    )
+    assert unsigned_res.status_code == 401
+
+    # 3. Webhook push with invalid HMAC signature should fail 401
+    bad_sig_res = client.post(
+        "/api/webhooks/github",
+        headers={
+            "x-github-event": "push",
+            "x-hub-signature-256": "sha256=invalidhexsignature12345",
+            "content-type": "application/json",
+        },
+        content=payload_bytes,
+    )
+    assert bad_sig_res.status_code == 401
+
+    # 4. Push webhook with valid HMAC signature
     secret = GITHUB_WEBHOOK_SECRET or "deploynest_default_webhook_secret_key"
     sig = "sha256=" + hmac.new(secret.encode("utf-8"), payload_bytes, hashlib.sha256).hexdigest()
 

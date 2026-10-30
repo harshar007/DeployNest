@@ -52,7 +52,7 @@ export const GitHubIntegrationPage: React.FC = () => {
         body: JSON.stringify({ token: tokenInput }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to connect GitHub token");
+      if (!res.ok) throw new Error(data.error || data.detail || "Failed to connect GitHub token");
 
       setMessage({
         type: "success",
@@ -73,7 +73,7 @@ export const GitHubIntegrationPage: React.FC = () => {
     try {
       const res = await fetch("/api/github/sync", { method: "POST" });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to sync repositories");
+      if (!res.ok) throw new Error(data.error || data.detail || "Failed to sync repositories");
 
       setMessage({ type: "success", text: `Successfully synced ${data.syncedRepositories} repositories!` });
       await fetchStatus();

@@ -22,7 +22,7 @@ export const LoginPage: React.FC = () => {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Login failed");
+      if (!res.ok) throw new Error(data.error || data.detail || "Login failed");
 
       navigate("/dashboard");
     } catch (err: any) {

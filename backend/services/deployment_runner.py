@@ -21,6 +21,7 @@ class DeploymentRunner:
         Executes the end-to-end deployment lifecycle for a given deployment ID
         """
         db = SessionLocal()
+        token: Optional[str] = None
         try:
             deployment = db.query(Deployment).filter(Deployment.id == deployment_id).first()
             if not deployment:
@@ -37,13 +38,16 @@ class DeploymentRunner:
             db.commit()
 
             def add_log(stage: str, message: str, level: str = "info"):
-                print(f"[Deploy {deployment_id[:6]}][{stage}] {message}")
+                safe_message = message
+                if token:
+                    safe_message = safe_message.replace(token, "ghp_••••••••")
+                print(f"[Deploy {deployment_id[:6]}][{stage}] {safe_message}")
                 try:
                     log_entry = DeploymentLog(
                         deploymentId=deployment_id,
                         stage=stage,
                         level=level,
-                        message=message,
+                        message=safe_message,
                     )
                     db.add(log_entry)
                     db.commit()
@@ -68,23 +72,37 @@ class DeploymentRunner:
 
             add_log("PREPARING", f"Target directory ready: {target_dir}")
 
-            # 2. Resolve GitHub credentials
+            # 2. Stop any existing running process to release file locks on Windows/Linux
+            if ProcessManager.is_alive(repository.id):
+                add_log("PREPARING", "Stopping active application process before build update...")
+                ProcessManager.stop(repository.id)
+
+            # 3. Resolve GitHub credentials
             gh_conn = db.query(GithubConnection).order_by(GithubConnection.createdAt.desc()).first()
             clone_url = repository.cloneUrl
             if gh_conn and gh_conn.encryptedAccessToken:
                 token = decrypt(gh_conn.encryptedAccessToken)
                 if token:
-                    clone_url = repository.cloneUrl.replace(
-                        "https://github.com",
-                        f"https://oauth2:{token}@github.com",
-                    )
+                    if clone_url.startswith("git@github.com:"):
+                        repo_path = clone_url.replace("git@github.com:", "")
+                        clone_url = f"https://oauth2:{token}@github.com/{repo_path}"
+                    elif "https://github.com" in clone_url:
+                        clone_url = clone_url.replace(
+                            "https://github.com",
+                            f"https://oauth2:{token}@github.com",
+                        )
 
             branch = deployment.branch or (config.branch if config else None) or repository.defaultBranch or "main"
+            is_rollback = deployment.triggerType == "ROLLBACK" and bool(deployment.commitSha)
+            target_rollback_commit = deployment.commitSha if is_rollback else None
 
-            # 3. Checkout code
+            # 4. Checkout code
             deployment.status = "CHECKING_OUT"
             db.commit()
-            add_log("CHECKOUT", f"Checking out branch '{branch}'...")
+            if is_rollback:
+                add_log("CHECKOUT", f"Rollback target detected: commit [{target_rollback_commit}] on branch '{branch}'")
+            else:
+                add_log("CHECKOUT", f"Checking out branch '{branch}'...")
 
             # Git safe directory config
             try:
@@ -104,23 +122,37 @@ class DeploymentRunner:
             is_git_repo = os.path.exists(os.path.join(target_dir, ".git"))
             if not is_git_repo:
                 add_log("CHECKOUT", f"Cloning repository from GitHub into {target_dir}...")
+                clone_cmd = f"git clone --branch {branch} {clone_url} ."
                 await cls._run_shell_command(
-                    f"git clone --depth 50 --branch {branch} {clone_url} .",
+                    clone_cmd,
                     target_dir,
                     add_log,
                     "CHECKOUT",
+                    token=token,
                 )
             else:
                 add_log("CHECKOUT", f"Fetching latest commits for branch '{branch}'...")
                 try:
-                    await cls._run_shell_command(f"git fetch origin {branch}", target_dir, add_log, "CHECKOUT")
-                    await cls._run_shell_command(f"git checkout {branch}", target_dir, add_log, "CHECKOUT")
-                    await cls._run_shell_command(f"git pull origin {branch}", target_dir, add_log, "CHECKOUT")
+                    # Update remote origin to current token credentials
+                    subprocess.run(
+                        f'git remote set-url origin "{clone_url}"',
+                        cwd=target_dir,
+                        shell=True,
+                        capture_output=True,
+                    )
+                    await cls._run_shell_command(f"git fetch origin {branch}", target_dir, add_log, "CHECKOUT", token=token)
+                    await cls._run_shell_command(f"git checkout {branch}", target_dir, add_log, "CHECKOUT", token=token)
+                    await cls._run_shell_command(f"git pull origin {branch}", target_dir, add_log, "CHECKOUT", token=token)
                 except Exception as pull_err:
                     add_log("CHECKOUT", f"Pull warning: {pull_err}. Attempting hard reset to origin/{branch}.", "warn")
-                    await cls._run_shell_command(f"git reset --hard origin/{branch}", target_dir, add_log, "CHECKOUT")
+                    await cls._run_shell_command(f"git reset --hard origin/{branch}", target_dir, add_log, "CHECKOUT", token=token)
 
-            # Read commit metadata
+            # If this is a rollback deployment, checkout target commit SHA
+            if is_rollback and target_rollback_commit:
+                add_log("CHECKOUT", f"Checking out rollback target commit: {target_rollback_commit}...")
+                await cls._run_shell_command(f"git checkout {target_rollback_commit}", target_dir, add_log, "CHECKOUT", token=token)
+
+            # Read and record commit metadata
             try:
                 res_sha = subprocess.run("git rev-parse --short HEAD", cwd=target_dir, shell=True, capture_output=True, text=True)
                 res_msg = subprocess.run("git log -1 --pretty=%B", cwd=target_dir, shell=True, capture_output=True, text=True)
@@ -131,16 +163,19 @@ class DeploymentRunner:
                     commit_msg = res_msg.stdout.strip().split("\n")[0] if res_msg.returncode == 0 else ""
                     commit_auth = res_auth.stdout.strip() if res_auth.returncode == 0 else "Unknown"
 
-                    deployment.commitSha = commit_sha
-                    deployment.commitMessage = commit_msg
-                    deployment.commitAuthor = commit_auth
+                    if not is_rollback or not deployment.commitSha:
+                        deployment.commitSha = commit_sha
+                    if not deployment.commitMessage:
+                        deployment.commitMessage = commit_msg
+                    if not deployment.commitAuthor:
+                        deployment.commitAuthor = commit_auth
                     db.commit()
 
-                    add_log("CHECKOUT", f"Active commit: [{commit_sha}] {commit_msg} by {commit_auth}")
+                    add_log("CHECKOUT", f"Active commit: [{deployment.commitSha}] {deployment.commitMessage} by {commit_auth}")
             except Exception:
                 pass
 
-            # 4. Determine Working Directory for Subdirectories / Monorepos
+            # 5. Determine Working Directory for Subdirectories / Monorepos
             working_dir = target_dir
             if config and config.rootDirectory and config.rootDirectory.strip():
                 candidate = os.path.abspath(os.path.join(target_dir, config.rootDirectory.strip()))
@@ -150,7 +185,7 @@ class DeploymentRunner:
                 else:
                     add_log("PREPARING", f"⚠️ Specified root directory '{config.rootDirectory.strip()}' does not exist inside repository. Defaulting to repository root.", "warn")
 
-            # 5. Inject Environment Variables
+            # 6. Inject Environment Variables & Write .env
             add_log("PREPARING", "Preparing environment variables & writing .env file...")
             env_map: Dict[str, str] = {}
             env_file_lines = []
@@ -162,6 +197,8 @@ class DeploymentRunner:
 
             if config and config.port:
                 env_map["PORT"] = str(config.port)
+                if not any(line.startswith("PORT=") for line in env_file_lines):
+                    env_file_lines.append(f"PORT={config.port}")
 
             if env_file_lines:
                 with open(os.path.join(target_dir, ".env"), "w", encoding="utf-8") as f:
@@ -174,7 +211,7 @@ class DeploymentRunner:
                         pass
                 add_log("PREPARING", f"Injected {len(env_file_lines)} environment variables into .env")
 
-            # 6. Install Dependencies
+            # 7. Install Dependencies
             if config and config.installCommand and config.installCommand.strip():
                 deployment.status = "INSTALLING"
                 db.commit()
@@ -185,10 +222,11 @@ class DeploymentRunner:
                     add_log,
                     "INSTALL",
                     env_map,
+                    token=token,
                 )
                 add_log("INSTALL", "Dependencies installed successfully.")
 
-            # 7. Build Project
+            # 8. Build Project
             if config and config.buildCommand and config.buildCommand.strip():
                 deployment.status = "BUILDING"
                 db.commit()
@@ -199,10 +237,11 @@ class DeploymentRunner:
                     add_log,
                     "BUILD",
                     env_map,
+                    token=token,
                 )
                 add_log("BUILD", "Build completed successfully.")
 
-            # 8. Start / Launch Application
+            # 9. Start / Launch Application
             if config and config.startCommand and config.startCommand.strip():
                 deployment.status = "DEPLOYING"
                 db.commit()
@@ -212,7 +251,7 @@ class DeploymentRunner:
                 is_docker_compose = "docker compose" in start_cmd or "docker-compose" in start_cmd
                 if is_docker_compose:
                     add_log("CONTAINER", "Launching Docker Compose stack...")
-                    await cls._run_shell_command(start_cmd, working_dir, add_log, "CONTAINER", env_map)
+                    await cls._run_shell_command(start_cmd, working_dir, add_log, "CONTAINER", env_map, token=token)
                     add_log("CONTAINER", "Docker Compose stack launched.")
                 else:
                     start_res = ProcessManager.start(
@@ -234,7 +273,7 @@ class DeploymentRunner:
                         snippet = " | ".join([l["text"] for l in logs])
                         raise RuntimeError(f"Application process terminated immediately after startup. Details: {snippet or 'Process closed prematurely.'}")
 
-            # 9. Port Availability Check
+            # 10. Port Availability Check
             target_port = config.port if config else None
             if target_port and target_port > 0:
                 deployment.status = "HEALTH_CHECK"
@@ -260,7 +299,7 @@ class DeploymentRunner:
                 if not port_open:
                     raise RuntimeError(f"Port {target_port} failed to open within {max_retries}s timeout. Ensure your start command binds to 0.0.0.0:{target_port}.")
 
-            # 10. HTTP Health Check Probe
+            # 11. HTTP Health Check Probe
             if target_port and config and config.healthCheckUrl and config.healthCheckUrl.strip():
                 health_path = config.healthCheckUrl.strip()
                 add_log("HEALTH", f"Verifying HTTP endpoint http://127.0.0.1:{target_port}{health_path}...")
@@ -271,7 +310,7 @@ class DeploymentRunner:
 
                 add_log("HEALTH", "Health check passed! Application is live and serving HTTP requests.")
 
-            # 11. Post-Health-Check Stabilization Check
+            # 12. Post-Health-Check Stabilization Check
             add_log("VERIFY", "Performing post-startup stabilization check...")
             await asyncio.sleep(2.0)
 
@@ -284,7 +323,7 @@ class DeploymentRunner:
 
             add_log("VERIFY", "Application process and port verified stable.")
 
-            # 12. Complete Deployment as SUCCESS
+            # 13. Complete Deployment as SUCCESS
             completed_at = datetime.now(timezone.utc)
             duration_s = int((completed_at - start_time).total_seconds())
 
@@ -297,17 +336,21 @@ class DeploymentRunner:
             add_log("SUCCESS", f"Deployment #{deployment_id[:6]} completed successfully in {duration_s}s! Public port: {target_port or 'N/A'}")
 
         except Exception as err:
-            print(f"[DEPLOY] Deployment {deployment_id} failed: {err}")
+            err_msg = str(err)
+            if token:
+                err_msg = err_msg.replace(token, "ghp_••••••••")
+            print(f"[DEPLOY] Deployment {deployment_id} failed: {err_msg}")
             completed_at = datetime.now(timezone.utc)
             duration_s = int((completed_at - start_time).total_seconds()) if "start_time" in locals() else 0
 
             try:
+                db.rollback()
                 deployment = db.query(Deployment).filter(Deployment.id == deployment_id).first()
                 if deployment:
                     deployment.status = "FAILED"
                     deployment.completedAt = completed_at
                     deployment.duration = duration_s
-                    deployment.errorMessage = str(err)
+                    deployment.errorMessage = err_msg
                     if deployment.repository:
                         deployment.repository.status = "FAILED"
                     db.commit()
@@ -316,12 +359,12 @@ class DeploymentRunner:
                     deploymentId=deployment_id,
                     stage="ERROR",
                     level="error",
-                    message=f"Deployment failed: {str(err)}",
+                    message=f"Deployment failed: {err_msg}",
                 )
                 db.add(log_entry)
                 db.commit()
-            except Exception:
-                pass
+            except Exception as inner_err:
+                print(f"[DEPLOY] Error persisting failure log: {inner_err}")
         finally:
             db.close()
 
@@ -333,6 +376,7 @@ class DeploymentRunner:
         add_log: Callable[[str, str, str], None],
         stage: str,
         custom_env: Optional[Dict[str, str]] = None,
+        token: Optional[str] = None,
     ):
         """
         Executes a shell command asynchronously while streaming stdout/stderr into deployment logs
@@ -358,7 +402,10 @@ class DeploymentRunner:
                     break
                 text = line.decode("utf-8", errors="replace").rstrip("\r\n")
                 if text.strip():
-                    add_log(stage, text.strip(), level)
+                    safe_text = text.strip()
+                    if token:
+                        safe_text = safe_text.replace(token, "ghp_••••••••")
+                    add_log(stage, safe_text, level)
 
         await asyncio.gather(
             read_stream(proc.stdout, "info"),
@@ -367,7 +414,10 @@ class DeploymentRunner:
 
         return_code = await proc.wait()
         if return_code != 0:
-            raise RuntimeError(f"Command '{command}' exited with code {return_code}")
+            safe_cmd = command
+            if token:
+                safe_cmd = safe_cmd.replace(token, "ghp_••••••••")
+            raise RuntimeError(f"Command '{safe_cmd}' exited with code {return_code}")
 
     @classmethod
     async def _probe_health_check(

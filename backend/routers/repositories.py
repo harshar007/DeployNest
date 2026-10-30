@@ -101,7 +101,7 @@ def get_repository(
 
 
 @router.delete("/{repo_id}")
-def delete_repository(
+async def delete_repository(
     repo_id: str,
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -109,6 +109,16 @@ def delete_repository(
     repo = db.query(Repository).filter(Repository.id == repo_id).first()
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
+
+    if repo.config and repo.config.webhookId:
+        gh_conn = db.query(GithubConnection).order_by(GithubConnection.createdAt.desc()).first()
+        if gh_conn and gh_conn.encryptedAccessToken:
+            try:
+                token = decrypt(gh_conn.encryptedAccessToken)
+                if token:
+                    await delete_github_webhook(token, repo.owner, repo.name, repo.config.webhookId)
+            except Exception as del_hook_err:
+                print(f"Failed to delete GitHub webhook for {repo.fullName}: {del_hook_err}")
 
     ProcessManager.stop(repo_id)
     db.delete(repo)
@@ -428,6 +438,10 @@ def get_env_vars(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    repo = db.query(Repository).filter(Repository.id == repo_id).first()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
     env_vars = db.query(EnvironmentVariable).filter(EnvironmentVariable.repositoryId == repo_id).order_by(EnvironmentVariable.key.asc()).all()
     formatted = []
     for v in env_vars:
@@ -448,6 +462,10 @@ def save_env_var(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    repo = db.query(Repository).filter(Repository.id == repo_id).first()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
     key = payload.key.strip()
     if not key:
         raise HTTPException(status_code=400, detail="Key is required")
@@ -492,6 +510,10 @@ def delete_env_var(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    repo = db.query(Repository).filter(Repository.id == repo_id).first()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
     db.query(EnvironmentVariable).filter(
         EnvironmentVariable.id == envId,
         EnvironmentVariable.repositoryId == repo_id,
@@ -557,9 +579,17 @@ def restart_app(
         raise HTTPException(status_code=404, detail="Repository not found")
 
     result = ProcessManager.restart(repo.id)
-    if result.get("success"):
-        repo.status = "RUNNING"
-        db.commit()
+    if not result.get("success"):
+        # If in-memory process configuration was lost (e.g. backend restarted), fall back to launching from DB config
+        if repo.config:
+            return start_app(repo_id, current_user, db)
+        raise HTTPException(
+            status_code=400,
+            detail=result.get("message", "Failed to restart application"),
+        )
+
+    repo.status = "RUNNING"
+    db.commit()
 
     return result
 
@@ -599,9 +629,14 @@ def start_app(
         repo.config.port,
     )
 
-    if result.get("success"):
-        repo.status = "RUNNING"
-        db.commit()
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=400,
+            detail=result.get("message", "Failed to start application"),
+        )
+
+    repo.status = "RUNNING"
+    db.commit()
 
     return result
 
@@ -645,6 +680,12 @@ def stop_app(
         raise HTTPException(status_code=404, detail="Repository not found")
 
     result = ProcessManager.stop(repo.id)
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=400,
+            detail=result.get("message", "Failed to stop application"),
+        )
+
     repo.status = "STOPPED"
     db.commit()
 

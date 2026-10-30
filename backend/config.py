@@ -19,13 +19,11 @@ APP_URL = os.getenv("APP_URL", "http://localhost:29870")
 NODE_ENV = os.getenv("NODE_ENV", "development")
 
 # Database URL
-# Handle SQLite paths like "file:./data/deploynest.db" or "file:./prisma/data/deploynest.db"
-raw_db_url = os.getenv("DATABASE_URL", "file:./prisma/data/deploynest.db")
+raw_db_url = os.getenv("DATABASE_URL", "file:./data/deploynest.db")
 if raw_db_url.startswith("file:"):
     db_relative = raw_db_url.replace("file:", "").strip()
     # Check if relative to BASE_DIR
     resolved_db = (BASE_DIR / db_relative).resolve()
-    # If not exists yet under given path, check prisma/data/deploynest.db or data/deploynest.db
     if not resolved_db.parent.exists():
         resolved_db.parent.mkdir(parents=True, exist_ok=True)
     DATABASE_URL = f"sqlite:///{resolved_db.as_posix()}"

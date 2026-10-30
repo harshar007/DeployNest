@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Sliders,
   ExternalLink,
+  AlertCircle,
 } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
 
@@ -16,6 +17,7 @@ export const ApplicationsPage: React.FC = () => {
   const [apps, setApps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const fetchApps = async () => {
     try {
@@ -39,10 +41,16 @@ export const ApplicationsPage: React.FC = () => {
 
   const handleAction = async (repoId: string, action: "start" | "stop" | "restart" | "deploy") => {
     setActionLoading(repoId);
+    setActionError(null);
     try {
-      await fetch(`/api/repositories/${repoId}/${action}`, { method: "POST" });
+      const res = await fetch(`/api/repositories/${repoId}/${action}`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok || data.success === false) {
+        throw new Error(data.error || data.detail || data.message || `Failed to ${action} application`);
+      }
       setTimeout(fetchApps, 1000);
-    } catch (err) {
+    } catch (err: any) {
+      setActionError(err.message);
       console.error(`Action ${action} failed:`, err);
     } finally {
       setActionLoading(null);
@@ -83,6 +91,13 @@ export const ApplicationsPage: React.FC = () => {
           <span>Refresh Processes</span>
         </button>
       </div>
+
+      {actionError && (
+        <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>{actionError}</span>
+        </div>
+      )}
 
       {/* Applications Cards */}
       {loading ? (

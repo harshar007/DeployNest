@@ -1,8 +1,10 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.config import HOST, PORT, BASE_DIR
 from backend.database import init_db
@@ -43,14 +45,38 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# HTTP Exception Handler ensuring consistent error and detail fields
+@app.exception_handler(StarletteHTTPException)
+async def custom_http_exception_handler(request: Request, exc: StarletteHTTPException):
+    detail_msg = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": detail_msg, "error": detail_msg},
+    )
+
+
+# Request Validation Exception Handler
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    errors = exc.errors()
+    first_err = errors[0].get("msg") if errors else "Invalid request data"
+    return JSONResponse(
+        status_code=422,
+        content={"detail": first_err, "error": first_err, "errors": errors},
+    )
+
+
 # Global Exception Handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     print(f"[API Error] {request.method} {request.url.path}: {exc}")
+    err_msg = str(exc)
     return JSONResponse(
         status_code=500,
-        content={"error": str(exc)},
+        content={"detail": err_msg, "error": err_msg},
     )
+
 
 # Register API Routers
 app.include_router(auth.router)
@@ -81,8 +107,8 @@ def root_status(request: Request):
 
 @app.get("/{full_path:path}")
 async def serve_spa_fallback(request: Request, full_path: str):
-    if full_path.startswith("api/") or full_path in ("docs", "openapi.json", "redoc"):
-        return JSONResponse(status_code=404, content={"detail": "Not Found"})
+    if full_path == "api" or full_path.startswith("api/") or full_path in ("docs", "openapi.json", "redoc"):
+        return JSONResponse(status_code=404, content={"detail": "Not Found", "error": "Not Found"})
 
     file_path = dist_dir / full_path
     if full_path and file_path.is_file():
@@ -92,7 +118,7 @@ async def serve_spa_fallback(request: Request, full_path: str):
     if index_file.exists():
         return FileResponse(index_file)
 
-    return JSONResponse(status_code=404, content={"detail": "Not Found"})
+    return JSONResponse(status_code=404, content={"detail": "Not Found", "error": "Not Found"})
 
 
 if __name__ == "__main__":

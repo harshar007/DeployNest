@@ -68,7 +68,7 @@ export const DeploymentDetailPage: React.FC = () => {
         method: "POST",
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Rollback failed");
+      if (!res.ok || data.success === false) throw new Error(data.error || data.detail || data.message || "Rollback failed");
 
       navigate(`/dashboard/deployments/${data.deploymentId}`);
     } catch (err: any) {

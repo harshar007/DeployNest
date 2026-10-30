@@ -152,7 +152,7 @@ export const RepositoryDetailPage: React.FC = () => {
         setMessage({ type: "success", text: data.message || "Firewall updated!" });
         runDiagnostics();
       } else {
-        setMessage({ type: "error", text: data.error || "Failed to open firewall" });
+        setMessage({ type: "error", text: data.error || data.detail || data.message || "Failed to open firewall" });
       }
     } catch (err: any) {
       setMessage({ type: "error", text: err.message });
@@ -242,7 +242,7 @@ export const RepositoryDetailPage: React.FC = () => {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to save configuration");
+      if (!res.ok) throw new Error(data.error || data.detail || data.message || "Failed to save configuration");
 
       setMessage({ type: "success", text: "Configuration saved successfully!" });
       await fetchRepoData();
@@ -267,7 +267,7 @@ export const RepositoryDetailPage: React.FC = () => {
         body: JSON.stringify({ branch }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to trigger deployment");
+      if (!res.ok) throw new Error(data.error || data.detail || data.message || "Failed to trigger deployment");
 
       navigate(`/dashboard/deployments/${data.deploymentId}`);
     } catch (err: any) {
@@ -285,7 +285,7 @@ export const RepositoryDetailPage: React.FC = () => {
         method: "POST",
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || `Failed to ${action} application`);
+      if (!res.ok || data.success === false) throw new Error(data.error || data.detail || data.message || `Failed to ${action} application`);
 
       setMessage({ type: "success", text: `Application ${action}ed successfully!` });
       await fetchRepoData();
@@ -314,7 +314,7 @@ export const RepositoryDetailPage: React.FC = () => {
 
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || "Failed to add environment variable");
+        throw new Error(err.error || err.detail || "Failed to add environment variable");
       }
 
       setNewKey("");

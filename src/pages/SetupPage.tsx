@@ -42,7 +42,7 @@ export const SetupPage: React.FC = () => {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Setup failed");
+      if (!res.ok) throw new Error(data.error || data.detail || "Setup failed");
 
       setStep(2);
     } catch (err: any) {
@@ -65,7 +65,7 @@ export const SetupPage: React.FC = () => {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "GitHub connection failed");
+      if (!res.ok) throw new Error(data.error || data.detail || "GitHub connection failed");
 
       setConnectedUser(data.profile);
       setStep(3);

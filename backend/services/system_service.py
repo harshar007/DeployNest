@@ -3,6 +3,7 @@ import platform
 import time
 from typing import Dict, Any
 import psutil
+from backend.config import BASE_DIR
 
 
 def get_system_health() -> Dict[str, Any]:
@@ -22,9 +23,8 @@ def get_system_health() -> Dict[str, Any]:
     mem_percent = round((used_mem / total_mem) * 100) if total_mem > 0 else 0
 
     # Disk
-    root_path = "C:\\" if os.name == "nt" else "/"
     try:
-        disk = psutil.disk_usage(root_path)
+        disk = psutil.disk_usage(str(BASE_DIR))
         total_disk = disk.total
         used_disk = disk.used
         free_disk = disk.free

@@ -7,6 +7,7 @@
     "dev": "vite --port 29870 --host 0.0.0.0",
     "build": "tsc && vite build",
     "preview": "vite preview --port 29870 --host 0.0.0.0",
+    "start": "python run_backend.py",
     "backend:py": "python run_backend.py",
     "test:py": "python -m pytest tests/test_api_suite.py && python tests/test_lifecycle.py"
   },
